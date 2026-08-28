@@ -7,7 +7,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!requireAuth(req, res)) return
   await initDb()
   const shops = await listShops()
-  // токен наружу не отдаём — только маску
+  // токен наружу не отдаём — только маску. instructions — в открытом виде, это просто текст правил.
   res.status(200).json(
     shops.map((s) => ({
       id: s.id,
@@ -15,6 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mode: s.mode,
       enabled: s.enabled,
       tokenMask: s.token.slice(0, 6) + '…' + s.token.slice(-4),
+      instructions: s.instructions || '',
     })),
   )
 }

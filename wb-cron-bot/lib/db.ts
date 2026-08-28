@@ -34,6 +34,12 @@ export async function initDb(): Promise<void> {
     )
   `
 
+  // Миграция: добавляем колонку instructions, если её ещё нет
+  await db`
+    ALTER TABLE shops
+    ADD COLUMN IF NOT EXISTS instructions TEXT
+  `
+
   await db`
     CREATE TABLE IF NOT EXISTS feedbacks (
       id            TEXT        NOT NULL,
@@ -84,13 +90,14 @@ export type Shop = {
   token: string
   mode: ShopMode
   enabled: boolean
+  instructions: string | null
 }
 
 export async function listShops(): Promise<Shop[]> {
   const db = getDb()
   if (!db) return []
   return await db`
-    SELECT id, name, token, mode, enabled
+    SELECT id, name, token, mode, enabled, instructions
     FROM shops
     ORDER BY id
   ` as Shop[]
@@ -117,6 +124,15 @@ export async function setShopEnabled(id: number, enabled: boolean): Promise<void
   const db = getDb()
   if (!db) throw new Error('БД не настроена (DATABASE_URL)')
   await db`UPDATE shops SET enabled = ${enabled} WHERE id = ${id}`
+}
+
+/** Обновить инструкции для LLM (правила поведения бота). */
+export async function updateShopInstructions(id: number, instructions: string): Promise<void> {
+  const db = getDb()
+  if (!db) throw new Error('БД не настроена (DATABASE_URL)')
+  // Пустую строку сохраняем как null, чтобы в БД не было пустых записей
+  const value = instructions.trim() ? instructions.trim() : null
+  await db`UPDATE shops SET instructions = ${value} WHERE id = ${id}`
 }
 
 /** Алиас для панели (кнопка Вкл/Выкл). */

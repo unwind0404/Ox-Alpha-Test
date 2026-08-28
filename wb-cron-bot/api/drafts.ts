@@ -67,8 +67,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // --- Перегенерировать черновик ---
   if (action === 'regenerate') {
     const rows = await db`
-      SELECT rating, text, pros, cons, product_name, subject_name, user_name
-      FROM feedbacks WHERE id = ${feedback_id} AND shop_id = ${shop_id} AND status = 'draft'
+      SELECT f.rating, f.text, f.pros, f.cons, f.product_name, f.subject_name, f.user_name,
+             s.instructions AS shop_instructions
+      FROM feedbacks f
+      LEFT JOIN shops s ON s.id = f.shop_id
+      WHERE f.id = ${feedback_id} AND f.shop_id = ${shop_id} AND f.status = 'draft'
     ` as {
       rating: number | null
       text: string | null
@@ -77,6 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       product_name: string | null
       subject_name: string | null
       user_name: string | null
+      shop_instructions: string | null
     }[]
     if (!rows[0]) return res.status(404).json({ error: 'Черновик не найден' })
 
@@ -89,6 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cons: fb.cons ?? undefined,
         productName: fb.product_name ?? undefined,
         userName: fb.user_name ?? undefined,
+        instructions: fb.shop_instructions,
       })
       // Один UPDATE вместо двух: сразу в draft с новым текстом.
       // Раньше было два запроса (rejected → draft) — между ними статус

@@ -18,8 +18,8 @@ async function getUnanswered(req: VercelRequest, res: VercelResponse) {
   const db = getDb()
   if (!db) return res.status(500).json({ error: 'БД не настроена' })
 
-  const shops = await db`SELECT id, name, token, mode, enabled FROM shops WHERE id = ${shopId}` as
-    { id: number; name: string; token: string; mode: string; enabled: boolean }[]
+  const shops = await db`SELECT id, name, token, mode, enabled, instructions FROM shops WHERE id = ${shopId}` as
+    { id: number; name: string; token: string; mode: string; enabled: boolean; instructions: string | null }[]
   if (!shops[0]) return res.status(404).json({ error: 'Магазин не найден' })
   if (!shops[0].enabled) return res.status(400).json({ error: 'Магазин выключен' })
 
@@ -73,7 +73,7 @@ async function getUnanswered(req: VercelRequest, res: VercelResponse) {
   })
 
   return res.status(200).json({
-    shop: { id: shops[0].id, name: shops[0].name, mode: shops[0].mode },
+    shop: { id: shops[0].id, name: shops[0].name, mode: shops[0].mode, instructions: shops[0].instructions },
     total_on_wb: wbList.length,
     items,
   })
@@ -103,8 +103,8 @@ async function previewOrApprove(req: VercelRequest, res: VercelResponse) {
   const db = getDb()
   if (!db) return res.status(500).json({ error: 'БД не настроена' })
 
-  const shops = await db`SELECT id, name, token, mode, enabled FROM shops WHERE id = ${shop_id}` as
-    { id: number; name: string; token: string; mode: string; enabled: boolean }[]
+  const shops = await db`SELECT id, name, token, mode, enabled, instructions FROM shops WHERE id = ${shop_id}` as
+    { id: number; name: string; token: string; mode: string; enabled: boolean; instructions: string | null }[]
   if (!shops[0]) return res.status(404).json({ error: 'Магазин не найден' })
   if (!shops[0].enabled) return res.status(400).json({ error: 'Магазин выключен' })
 
@@ -153,6 +153,7 @@ async function previewOrApprove(req: VercelRequest, res: VercelResponse) {
         cons: fb.cons ?? undefined,
         productName: fb.productDetails?.productName ?? undefined,
         userName: fb.userName ?? undefined,
+        instructions: shops[0].instructions,
       }
 
       if (action === 'preview') {

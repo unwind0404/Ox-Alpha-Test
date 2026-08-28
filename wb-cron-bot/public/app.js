@@ -108,6 +108,18 @@ function renderShops() {
         <button class="ghost process-now" data-id="${s.id}" ${s.enabled ? '' : 'disabled'}>Обработать сейчас</button>
         <button class="ghost toggle" data-id="${s.id}">${s.enabled ? 'Выключить' : 'Включить'}</button>
         <button class="danger del" data-id="${s.id}" data-name="${esc(s.name)}">Удалить</button>
+      </div>
+      <div class="shop-instructions" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border)">
+        <label class="hint" style="display:block; margin-bottom:6px">
+          <strong>Правила для LLM</strong> — что бот может/не должен использовать в ответе.
+          Например: <em>«Не упоминай название товара»</em>, <em>«Добавляй промокод WB-2026 в конце»</em>.
+        </label>
+        <textarea class="instructions" data-id="${s.id}" rows="4" placeholder="Оставьте пустым, если правил нет"
+          style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit; font-size:0.88rem; outline:none; resize:vertical;">${esc(s.instructions || '')}</textarea>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
+          <button class="primary save-instructions" data-id="${s.id}">Сохранить правила</button>
+          <span class="hint" data-role="instructions-status-${s.id}"></span>
+        </div>
       </div>`
     card.querySelector('.mode-select').addEventListener('change', async (e) => {
       try {
@@ -153,6 +165,21 @@ function renderShops() {
         loadShops()
         loadFeedbacks()
       } catch (err) { toast(err.message, 'error') }
+    })
+    card.querySelector('.save-instructions').addEventListener('click', async (e) => {
+      const btn = e.target
+      const shopId = Number(btn.dataset.id)
+      const text = card.querySelector('.instructions').value
+      btn.disabled = true
+      btn.textContent = 'Сохраняю…'
+      try {
+        await api('/api/shops-action', { method: 'POST', body: { id: shopId, action: 'instructions', instructions: text } })
+        toast('Правила сохранены', 'ok')
+      } catch (err) { toast(err.message, 'error') }
+      finally {
+        btn.disabled = false
+        btn.textContent = 'Сохранить правила'
+      }
     })
     el.appendChild(card)
   }

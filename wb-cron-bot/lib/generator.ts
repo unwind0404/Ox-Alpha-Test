@@ -7,6 +7,8 @@ export type FeedbackInput = {
   cons?: string
   productName?: string
   userName?: string
+  /** Дополнительные правила для LLM от продавца (например, "не упоминай название товара") */
+  instructions?: string | null
 }
 
 export type AnswerSource = 'template' | 'llm'
@@ -62,11 +64,26 @@ function buildPrompt(fb: FeedbackInput): string {
         ? 'Поблагодари за отзыв, мягко вырази надежду на улучшение опыта, предложи обратиться в поддержку.'
         : 'Искренне извинись за негативный опыт, не оправдывайся, предложи связаться для решения проблемы.'
 
+  // Собираем пользовательские инструкции (могут быть от магазина + глобальные из env)
+  const userRules: string[] = []
+  if (fb.instructions && fb.instructions.trim()) {
+    userRules.push(fb.instructions.trim())
+  }
+  const globalRules = process.env.GLOBAL_INSTRUCTIONS?.trim()
+  if (globalRules) {
+    userRules.push(globalRules)
+  }
+
   return [
     'Ты — сотрудник поддержки интернет-магазина на Wildberries.',
     'Напиши ответ на отзыв покупателя от лица магазина.',
     '',
-    'Правила:',
+    userRules.length ? [
+      '⚠️ ЖЁСТКИЕ ПРАВИЛА ОТ ПРОДАВЦА (НАРУШАТЬ НЕЛЬЗЯ, это важнее всего):',
+      ...userRules.map((r, i) => `  ${i + 1}. ${r}`),
+      '',
+    ].join('\n') : '',
+    'Правила по умолчанию:',
     '- Пиши только текст ответа, без кавычек и пояснений.',
     '- Обращайся на «Вы».',
     '- Длина: 2–4 предложения.',

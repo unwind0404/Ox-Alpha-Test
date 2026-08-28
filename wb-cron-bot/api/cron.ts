@@ -8,7 +8,7 @@ import { reportRun, reportError, isTelegramConfigured, sendMessage } from '../li
 import { getDb, initDb, listShops, saveFeedback, listFeedbacksSince, saveInsight, type FeedbackInput } from '../lib/db.js'
 import { analyzeFeedbacks } from '../lib/insights.js'
 
-type Target = { shopId: number | null; name: string; token: string; mode: string }
+type Target = { shopId: number | null; name: string; token: string; mode: string; instructions: string | null }
 
 async function getTargets(): Promise<Target[]> {
   // приоритет: магазины из БД; если БД нет — env-магазин
@@ -18,11 +18,11 @@ async function getTargets(): Promise<Target[]> {
     const shops = await listShops()
     return shops
       .filter((s) => s.enabled)
-      .map((s) => ({ shopId: s.id, name: s.name, token: s.token, mode: s.mode }))
+      .map((s) => ({ shopId: s.id, name: s.name, token: s.token, mode: s.mode, instructions: s.instructions }))
   }
   const envToken = process.env.WB_API_TOKEN
   if (envToken) {
-    return [{ shopId: null, name: 'Магазин (env)', token: envToken, mode: process.env.ANSWER_MODE || 'templates' }]
+    return [{ shopId: null, name: 'Магазин (env)', token: envToken, mode: process.env.ANSWER_MODE || 'templates', instructions: null }]
   }
   return []
 }
@@ -110,6 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           productName: fb.productDetails?.productName ?? undefined,
           subjectName: fb.subjectName ?? undefined,
           userName: fb.userName ?? undefined,
+          instructions: target.instructions,
         } as unknown as FeedbackInput
         const media = {
           id: fb.id,

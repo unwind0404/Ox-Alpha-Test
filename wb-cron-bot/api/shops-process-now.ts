@@ -9,7 +9,7 @@ import { getDb, initDb, saveFeedback, listShops, type FeedbackInput } from '../l
 import { WbClient, RateLimitError, type WbFeedback } from '../lib/wb-client.js'
 import { generateAnswer } from '../lib/generator.js'
 
-type Target = { shopId: number; name: string; token: string; mode: string }
+type Target = { shopId: number; name: string; token: string; mode: string; instructions: string | null }
 
 async function loadTarget(shopId: number): Promise<Target | null> {
   const db = getDb()
@@ -18,7 +18,7 @@ async function loadTarget(shopId: number): Promise<Target | null> {
   const shops = await listShops()
   const s = shops.find((x) => x.id === shopId)
   if (!s) return null
-  return { shopId: s.id, name: s.name, token: s.token, mode: s.mode }
+  return { shopId: s.id, name: s.name, token: s.token, mode: s.mode, instructions: s.instructions }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -82,6 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       productName: fb.productDetails?.productName ?? undefined,
       subjectName: fb.subjectName ?? undefined,
       userName: fb.userName ?? undefined,
+      instructions: target.instructions,
     } as unknown as FeedbackInput
     try {
       if (target.mode === 'drafts') {
