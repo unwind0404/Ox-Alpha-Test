@@ -237,7 +237,8 @@ export async function saveFeedback(
   const finalStatus = status ?? (error ? 'error' : 'answered')
 
   // Postgres-драйвер отвергает undefined — тотальная санитизация всех полей
-  const v = (x: unknown) => (x === undefined || x === null ? null : x)
+  // Каст в string|number|null, чтобы типы postgres-шаблона не ругались
+  const v = (x: unknown): string | number | null => (x === undefined || x === null ? null : (x as string | number))
 
   const photoLinks = Array.isArray(fb.photoLinks)
     ? fb.photoLinks.filter((p): p is string => typeof p === 'string')

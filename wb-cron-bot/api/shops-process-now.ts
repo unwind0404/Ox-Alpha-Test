@@ -73,7 +73,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       videoPreview: typeof video?.preview === 'string' ? video.preview : null,
       createdDate: fb.createdDate ?? null,
     }
-    const input: FeedbackInput = {
+    const input = {
+      id: fb.id,
       rating: fb.productValuation ?? undefined,
       text: fb.text ?? undefined,
       pros: fb.pros ?? undefined,
@@ -81,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       productName: fb.productDetails?.productName ?? undefined,
       subjectName: fb.subjectName ?? undefined,
       userName: fb.userName ?? undefined,
-    }
+    } as unknown as FeedbackInput
     try {
       if (target.mode === 'drafts') {
         // Генерируем, НЕ отправляем
@@ -91,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         details.push(`📝 черновик для ${fb.id}`)
       } else {
         // templates или llm — генерируем и отправляем
-        const { answer, source } = await generateAnswer(input, target.mode)
+        const { answer, source } = await generateAnswer(input, target.mode as 'templates' | 'llm')
         try {
           await client.answerFeedback(fb.id, answer)
           await saveFeedback(target.shopId, media, answer, source, null, 'answered')

@@ -100,7 +100,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       for (const fb of toAnswer) {
         const video = fb.video ?? null
-        const input: FeedbackInput = {
+        // generator.ts FeedbackInput ожидает id, но мы передаём уже извлечённые поля
+        const input = {
+          id: fb.id,
           rating: fb.productValuation ?? undefined,
           text: fb.text ?? undefined,
           pros: fb.pros ?? undefined,
@@ -108,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           productName: fb.productDetails?.productName ?? undefined,
           subjectName: fb.subjectName ?? undefined,
           userName: fb.userName ?? undefined,
-        }
+        } as unknown as FeedbackInput
         const media = {
           id: fb.id,
           nmId: fb.productDetails?.nmId ?? null,
@@ -133,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.log(`[cron] черновик готов для ${fb.id}`)
           } else {
             console.log(`[cron] генерирую ответ для ${fb.id} (режим ${target.mode})`)
-            const { answer, source } = await generateAnswer(input, target.mode)
+            const { answer, source } = await generateAnswer(input, target.mode as 'templates' | 'llm')
             console.log(`[cron] ответ получен, отправляю на WB...`)
             try {
               await client.answerFeedback(fb.id, answer)
