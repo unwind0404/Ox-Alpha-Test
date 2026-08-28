@@ -1,0 +1,31 @@
+name: WB Cron Bot — Tail (every 15 min)
+
+# Этот workflow дёргает наш /api/cron-all каждые 15 минут.
+# Это обход Vercel Hobby лимита (1 cron в день).
+# Бесплатно: GitHub Actions даёт 2000 минут/мес на free плане.
+# Каждый запуск — ~3-5 секунд, итого ~5-10 минут в день = 150-300 минут/мес.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  tail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Trigger WB Cron Bot tail
+        run: |
+          echo "Triggering https://wb-cron-bot.vercel.app/api/cron-all at $(date -u)"
+          RESPONSE=$(curl -sS -w "\n---HTTP_STATUS:%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "https://wb-cron-bot.vercel.app/api/cron-all")
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -oE 'HTTP_STATUS:[0-9]+' | cut -d: -f2)
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::HTTP $STATUS"
+            exit 1
+          fi

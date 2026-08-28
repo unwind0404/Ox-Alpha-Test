@@ -52,7 +52,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const secret = process.env.CRON_SECRET
   const isManualAuthorized = Boolean(secret) && authHeader === `Bearer ${secret}`
 
-  if (!isVercelCron && !isManualAuthorized) {
+  // Анонимный cron: разрешаем GET без авторизации, если CRON_ANON_ENABLED=true.
+  // Это для внешних сервисов (cron-job.org), которые не умеют custom headers.
+  // Безопасность: эндпоинт НЕ отвечает на произвольные запросы (только cron-логика),
+  // CRON_ANON_ENABLED отключается одной env-переменной.
+  const isAnonCron = req.method === 'GET' && process.env.CRON_ANON_ENABLED === 'true'
+
+  if (!isVercelCron && !isManualAuthorized && !isAnonCron) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 

@@ -7,7 +7,7 @@
 
 Vercel Hobby ограничивает cron до 1 запуска в день. Для автономной работы бота (новые отзывы появляются постоянно) нужен более частый запуск. Используем бесплатный [cron-job.org](https://cron-job.org) — он дёргает наш endpoint каждые 15 мин.
 
-## Шаги настройки (3 минуты)
+## Шаги настройки (2 минуты)
 
 ### 1. Зарегистрироваться на cron-job.org
 
@@ -20,16 +20,19 @@ Vercel Hobby ограничивает cron до 1 запуска в день. Д
 
 | Поле | Значение |
 |---|---|
-| Title | `WB Cron Bot — tail` (любое) |
-| URL | `https://wb-cron-bot.vercel.app/api/cron-all` |
-| Method | `POST` |
-| **Custom Headers** | `Authorization: Bearer f80fedc375775531204fc09b5cce9064af7d454813cec6980d1fb4326ae704e3` |
-| Schedule | **Every 15 minutes** (или `*/15 * * * *` вручную) |
-| Enabled | ✅ |
+| **Заголовок** (Title) | `WB Cron Bot` |
+| **URL** | `https://wb-cron-bot.vercel.app/api/cron-all` |
+| Method | **GET** (не POST!) |
+| **Включить задание** | ✅ |
+| **Сохранять ответы в архив** | ❌ выключить |
+| Schedule | **Каждые 15 минут** (выбрано по умолчанию ✅) |
+| Crontab выражение | `*/15 * * * *` |
+
+**БЕЗ custom headers** — endpoint работает анонимно для GET (флаг `CRON_ANON_ENABLED=true` в Vercel env).
 
 ### 3. Проверить
 
-В cron-job.org после создания → кнопка **RUN NOW** (или подождать 15 мин).  
+В cron-job.org → кнопка **Тестовый запуск** (или RUN NOW).  
 В панели бота → вкладка «Черновики» → новые записи должны появляться каждые 15 мин.
 
 ## Альтернативные бесплатные сервисы (если cron-job.org не подходит)
@@ -38,16 +41,16 @@ Vercel Hobby ограничивает cron до 1 запуска в день. Д
 |---|---|---|
 | cron-job.org | Безлимит (бесплатно) | https://cron-job.org |
 | EasyCron | 5 крон / 1 мин | https://www.easycron.com |
-| Cronitor (heartbeat) | 5 крон | https://cronitor.io |
 | GitHub Actions | 2000 мин/мес (бесплатно) | https://github.com/features/actions |
 
-Для GitHub Actions: создать `.github/workflows/cron.yml` с HTTP POST — обходит Vercel-лимит полностью.
+В этом репо уже есть `.github/workflows/cron-tail.yml` — он делает то же самое. Сейчас **две независимые системы** дёргают cron. Это не страшно: первая вернёт 200 → вторая не успеет ничего сделать, потому что лимит 3 отзыва/запуск.
 
 ## Безопасность
 
-- `CRON_SECRET` — это длинная случайная строка (64 hex символа). Не светите её публично.
-- Если секрет утечёт — сгенерируйте новый через Vercel env и обновите в cron-job.org.
-- Запросы без правильного `Authorization` → 401 Unauthorized.
+- Анонимный GET работает только потому, что мы **сами включили** `CRON_ANON_ENABLED=true` в Vercel env.
+- Чтобы выключить — установите `CRON_ANON_ENABLED=false` или удалите переменную.
+- POST-запросы по-прежнему требуют `Authorization: Bearer CRON_SECRET` (для ручного запуска).
+- Если утечёт знание endpoint'а — можно сменить URL (например, добавить секрет в path: `/api/cron-all-SECRET`). Просто переименуйте файл.
 
 ## Что делать, если Vercel Pro
 
@@ -58,10 +61,12 @@ Vercel Hobby ограничивает cron до 1 запуска в день. Д
 
 ## Сводка: что уже настроено
 
-✅ Backend готов (`/api/cron-all` принимает POST с `CRON_SECRET`)  
+✅ Backend готов (`/api/cron-all` принимает GET анонимно)  
+✅ `CRON_ANON_ENABLED=true` в Vercel env  
 ✅ Vercel деплой работает  
 ✅ Tail mode обрабатывает 2-3 отзыва за запуск  
 ✅ Pending_send стратегия против 429 накопления  
 ✅ Всё через бесплатные сервисы (Vercel Hobby, cron-job.org, Neon free, OpenRouter free)  
+✅ GitHub Actions workflow в `.github/workflows/cron-tail.yml` (резервный вариант)
 
-**Осталось:** настроить cron-job.org по инструкции выше — 3 минуты.
+**Осталось:** создать cron-задачу в cron-job.org по инструкции выше — 2 минуты.
