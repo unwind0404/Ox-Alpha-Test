@@ -267,14 +267,24 @@ export async function saveFeedback(
   await db`
     INSERT INTO feedbacks
       (id, shop_id, nm_id, product_name, subject_name, user_name, rating, text, pros, cons,
-       photo_links, video_url, video_preview, created_date, status, answer, source, error)
+       photo_links, video_url, video_preview, created_date, status, answer, source, error,
+       processed_at)
     VALUES
       (${fb.id}, ${shopId}, ${nmId}, ${v(fb.productName)}, ${v(fb.subjectName)},
        ${v(fb.userName)}, ${rating}, ${v(fb.text)}, ${v(fb.pros)}, ${v(fb.cons)},
        ${db.json(photoLinks)}, ${videoUrl}, ${videoPreview},
        ${createdDateSafe},
-       ${finalStatus}, ${v(answer)}, ${v(source)}, ${v(error)})
-    ON CONFLICT (id, shop_id) DO NOTHING
+       ${finalStatus}, ${v(answer)}, ${v(source)}, ${v(error)},
+       now())
+    ON CONFLICT (id, shop_id) DO UPDATE SET
+      -- Обновляем только то, что относится к ответу (status/answer/source/error)
+      -- и дату обработки. Метаданные отзыва (nmId, productName, photoLinks и т.п.)
+      -- не трогаем — они не меняются между запусками.
+      status = EXCLUDED.status,
+      answer = EXCLUDED.answer,
+      source = EXCLUDED.source,
+      error = EXCLUDED.error,
+      processed_at = EXCLUDED.processed_at
   `
 }
 

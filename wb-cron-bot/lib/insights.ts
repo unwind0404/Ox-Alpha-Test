@@ -77,8 +77,9 @@ async function askLLM(prompt: string): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error('Для анализа нужен OPENROUTER_API_KEY')
 
+  // Та же стратегия, что в generator.ts: MiniMax M3 free как основная, MiniMax M2.7 как fallback
   const models = [
-    process.env.LLM_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free',
+    process.env.LLM_MODEL || 'minimax/minimax-m3:free',
     process.env.LLM_FALLBACK_MODEL || 'minimax/minimax-m2.7:free',
   ]
 
@@ -102,10 +103,20 @@ async function askLLM(prompt: string): Promise<string> {
       })
       if (!res.ok) {
         const body = await res.text().catch(() => '')
+        if (res.status === 429 && /free-models-per-day/.test(body)) {
+          throw new Error('Дневной лимит OpenRouter на free-модели исчерпан. Попробуйте завтра.')
+        }
         throw new Error(`LLM ${res.status}: ${body.slice(0, 150)}`)
       }
-      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-      const content = data.choices?.[0]?.message?.content?.trim()
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string | null; reasoning?: string | null } }[]
+      }
+      const msg = data.choices?.[0]?.message
+      let content = msg?.content?.trim() ?? ''
+      if (!content && msg?.reasoning) {
+        console.warn(`[insights] модель ${model} вернула только reasoning`)
+        content = msg.reasoning.trim()
+      }
       if (!content) throw new Error('Пустой ответ модели')
       return content
     } catch (e) {

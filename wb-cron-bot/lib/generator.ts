@@ -47,7 +47,10 @@ export function templateAnswer(rating = 3): string {
 // ---------- LLM ----------
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
-const DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free'
+// 2026-08: большинство free-моделей OpenRouter упёрлись в дневной лимит (50/день).
+// MiniMax M3 free стабильно отвечает, не reasoning (content сразу), русский хороший.
+// max_tokens=500 хватает на 2-4 предложения; при 300 reasoning-модели могут вернуть null.
+const DEFAULT_MODEL = 'minimax/minimax-m3:free'
 const DEFAULT_FALLBACK_MODEL = 'minimax/minimax-m2.7:free'
 
 function buildPrompt(fb: FeedbackInput): string {
@@ -87,18 +90,34 @@ async function askModel(model: string, apiKey: string, prompt: string): Promise<
     },
     body: JSON.stringify({
       model,
-      max_tokens: 300,
+      // 500 хватает для 2-4 предложений; reasoning-модели при 300 часто возвращают null content
+      max_tokens: 500,
       messages: [{ role: 'user', content: prompt }],
     }),
   })
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
+    // Распознаём "лимит исчерпан" — даём понятное сообщение
+    if (res.status === 429 && /free-models-per-day/.test(body)) {
+      throw new Error('Дневной лимит OpenRouter на free-модели исчерпан. Попробуйте завтра или добавьте кредиты.')
+    }
     throw new Error(`LLM ${res.status}: ${body.slice(0, 150)}`)
   }
 
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-  const answer = data.choices?.[0]?.message?.content?.trim()
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string | null; reasoning?: string | null } }[]
+  }
+  const msg = data.choices?.[0]?.message
+  // Если content null, но есть reasoning (reasoning-модель) — попробуем взять reasoning
+  // как fallback (хотя он не идеален, лучше чем ошибка)
+  let answer = msg?.content?.trim() ?? ''
+  if (!answer && msg?.reasoning) {
+    // Reasoning — это размышления модели, не сам ответ. Но для free-резервного варианта
+    // лучше показать хоть что-то, чем упасть
+    console.warn(`[llm] модель ${model} вернула только reasoning, использую его как ответ`)
+    answer = msg.reasoning.trim()
+  }
   if (!answer) throw new Error('Пустой ответ модели')
   return answer
 }
@@ -124,7 +143,14 @@ export async function llmAnswer(fb: FeedbackInput): Promise<string> {
     }
   }
 
-  throw new Error(`Обе LLM-модели недоступны (последняя ошибка: ${lastError.message})`)
+  // Fallback на шаблон: лучше ответить шаблоном, чем упасть. Это безопасно, потому что
+  // шаблоны заранее одобрены продавцом (или используются дефолтные).
+  const rating = fb.rating
+  if (rating !== undefined) {
+    console.warn(`[llm] все модели недоступны, использую шаблон по оценке ${rating}`)
+    return templateAnswer(rating)
+  }
+  throw new Error(`Все LLM-модели и шаблон недоступны (последняя ошибка: ${lastError.message})`)
 }
 
 // ---------- Публичный API ----------
