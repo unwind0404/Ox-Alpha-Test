@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WB Review Bot</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Экран входа -->
+  <div id="auth-screen" class="screen" hidden>
+    <div class="auth-box">
+      <h1>WB Review Bot</h1>
+      <p class="subtitle">Панель управления автоответами</p>
+      <form id="auth-form">
+        <input id="auth-password" type="password" placeholder="Пароль администратора" autocomplete="current-password" required />
+        <button type="submit">Войти</button>
+        <p class="hint error" id="auth-error"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Панель -->
+  <div id="app-screen" class="screen" hidden>
+    <header>
+      <h1>WB Review Bot</h1>
+      <nav>
+        <button data-tab="shops" class="active">Магазины</button>
+        <button data-tab="unanswered">Неотвеченные</button>
+        <button data-tab="drafts">Черновики</button>
+        <button data-tab="feedbacks">Отзывы</button>
+        <button data-tab="insights">Аналитика</button>
+      </nav>
+      <button id="logout-btn" class="ghost">Выйти</button>
+    </header>
+
+    <main>
+      <!-- Магазины -->
+      <section id="tab-shops">
+        <form id="shop-form" class="card form-card">
+          <h2>Добавить магазин</h2>
+          <div class="row">
+            <input id="shop-name" placeholder="Название магазина" required />
+            <input id="shop-token" placeholder="WB API токен" required />
+          </div>
+          <div class="row">
+            <select id="shop-mode">
+              <option value="templates">Шаблоны (ответ по звёздам)</option>
+              <option value="drafts">Черновики LLM (одобрение вручную)</option>
+              <option value="llm">LLM-авто (отвечает сам)</option>
+            </select>
+            <button type="submit" class="primary">Добавить</button>
+          </div>
+          <p class="hint" id="shop-msg"></p>
+        </form>
+        <div id="shops-list"></div>
+      </section>
+
+      <!-- Аналитика -->
+      <section id="tab-insights" hidden>
+        <div class="toolbar">
+          <select id="insights-shop"><option value="">Выберите магазин</option></select>
+          <select id="insights-period">
+            <option value="month">За месяц</option>
+            <option value="quarter">За 3 месяца</option>
+          </select>
+          <button id="analyze-btn" class="primary" disabled>Анализировать</button>
+        </div>
+        <p class="hint" style="margin-bottom:16px">
+          LLM сгруппирует отзывы по темам, выделит проблемы и даст рекомендации.
+          За месяц анализ также запускается автоматически каждое воскресенье.
+        </p>
+        <div id="insights-list"></div>
+      </section>
+
+      <!-- Черновики -->
+      <section id="tab-drafts" hidden>
+        <div class="toolbar">
+          <select id="drafts-shop"><option value="">Все магазины</option></select>
+          <span class="hint" id="drafts-count"></span>
+        </div>
+        <div id="drafts-list"></div>
+      </section>
+
+      <!-- Неотвеченные (живой WB) -->
+      <section id="tab-unanswered" hidden>
+        <div class="toolbar">
+          <select id="unanswered-shop"><option value="">Выберите магазин</option></select>
+          <button id="unanswered-load" class="primary" disabled>Загрузить с WB</button>
+          <span class="hint" id="unanswered-status"></span>
+        </div>
+        <p class="hint" style="margin-bottom:16px">
+          Живой список неотвеченных отзывов с Wildberries. Поставьте галочки и нажмите «Сгенерировать превью» или «Одобрить и отправить».
+          За раз обрабатывается до 3 отзывов (лимит Vercel 60с).
+        </p>
+        <div id="unanswered-list"></div>
+      </section>
+
+      <!-- Отзывы -->
+      <section id="tab-feedbacks" hidden>
+        <div class="toolbar">
+          <select id="filter-shop"><option value="">Все магазины</option></select>
+          <select id="filter-status">
+            <option value="">Все статусы</option>
+            <option value="answered">Отвеченные</option>
+            <option value="error">С ошибками</option>
+          </select>
+          <button id="refresh-btn" class="ghost">Обновить</button>
+          <button id="run-now-btn" class="primary">Запустить сейчас</button>
+        </div>
+        <div id="feedbacks-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/app-utils.js"></script>
+  <script type="module" src="/app.js"></script>
+  <script type="module" src="/app-unanswered.js"></script>
+</body>
+</html>
