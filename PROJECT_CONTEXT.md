@@ -224,6 +224,7 @@ vercel dev  # подхватит .env (DATABASE_URL, OPENROUTER_API_KEY, CRON_SE
 3. **No CSP headers** — Vercel выдаёт минимальный набор. TODO.
 4. **Audit log в той же БД** — если злоумышленник имеет доступ к Neon, он может удалить логи. Для production — append-only S3.
 5. **Один общий пароль** — все видят всё. Нет ролей.
+6. **Vercel Hobby cron** — максимум 1 раз в день. Для 15-минутного cron — нужен внешний сервис (cron-job.org) или Pro plan.
 
 ## TODO (для следующих фаз)
 
@@ -234,3 +235,37 @@ vercel dev  # подхватит .env (DATABASE_URL, OPENROUTER_API_KEY, CRON_SE
 - Per-user роли (admin / manager / viewer)
 - Telegram-бот для уведомлений о новых отзывах
 - WebSocket для real-time обновлений (вместо polling)
+- Подключить cron-job.org для 15-минутного cron (обход Hobby лимита)
+
+## Фаза 8 — cron-all с pending_send (стратегия против 429)
+- **Один endpoint** `api/cron-all.ts` с двумя режимами:
+  - **main** (UTC час == 7, batch=20) — основной ежедневный обход
+  - **tail** (остальные часы, batch=3) — щадящий режим для 15-минутного cron
+- **Новый статус `pending_send`** — LLM сгенерил ответ, но не дошёл до WB (был 429).
+  - Следующий запуск cron-all подхватывает из `listPendingSend()` и пытается снова.
+- **Стратегия против накопления 429**:
+  - На 429 НЕ бьёмся снова в том же запуске.
+  - Сохраняем ответ как `pending_send` с пометкой `retryAfterSec`.
+  - Следующий cron (через 15 мин при внешнем cron-job.org) подхватывает.
+- **Vercel Hobby лимит:** максимум 1 cron в день. `vercel.json`: `0 7 * * *` — ежедневно в 10:00 МСК.
+  - Для 15-минутного cron нужно зарегистрироваться на cron-job.org (бесплатно) и дёргать `/api/cron-all` с `CRON_SECRET`.
+- **Объединение API:** `cron.ts` + `cron-tail.ts` + `cron-run.ts` → `cron-all.ts` (Vercel Hobby 12-fn limit).
+- **Производительность:**
+  - 100 отзывов: 5 дней по 20/день (без cron-job.org), ~2-6 часов (с 15-мин cron)
+  - При WB 429 — ответы копятся в `pending_send`, не теряются
+  - Пауза 1с между POST (1 req/sec для personal-токена)
+
+## Cron-job.org (опционально, для автономности)
+1. Зарегистрироваться на https://cron-job.org
+2. Создать задачу: POST https://wb-cron-bot.vercel.app/api/cron-all
+3. Headers: `Authorization: Bearer <CRON_SECRET>` (из Vercel env)
+4. Schedule: каждые 15 мин
+5. Теперь бот будет обрабатывать ~3 отзыва каждые 15 мин = 96/день автономно
+
+## Текущий статус (на 2026-08-28)
+- **Готово к продакшну:** rate-limit, audit log, locks, instructions, auto-preview
+- **Частично:** cron (только 1 раз в день на Hobby)
+- **Не готово:** 2FA, CSP, real-time updates
+- **Деплой:** https://wb-cron-bot.vercel.app
+- **Пароль:** Qwerty1234567899
+- **Rate limit сейчас:** 5 неудачных login в 15 мин заблокировали мой IP, осталось ~14 мин
