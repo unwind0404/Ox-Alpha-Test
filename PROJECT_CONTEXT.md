@@ -263,9 +263,11 @@ vercel dev  # подхватит .env (DATABASE_URL, OPENROUTER_API_KEY, CRON_SE
 5. Теперь бот будет обрабатывать ~3 отзыва каждые 15 мин = 96/день автономно
 
 ## Текущий статус (на 2026-08-28)
-- **Готово к продакшну:** rate-limit, audit log, locks, instructions, auto-preview
-- **Частично:** cron (только 1 раз в день на Hobby)
+- **Готово к продакшну:** rate-limit, audit log, locks, instructions, auto-preview, cron-all (main+tail), pending_send против 429
+- **Частично:** cron (только 1 раз в день на Hobby — обход через cron-job.org, см. CRON_SETUP.md)
 - **Не готово:** 2FA, CSP, real-time updates
 - **Деплой:** https://wb-cron-bot.vercel.app
 - **Пароль:** Qwerty1234567899
-- **Rate limit сейчас:** 5 неудачных login в 15 мин заблокировали мой IP, осталось ~14 мин
+- **CRON_SECRET (для cron-job.org):** f80fedc375775531204fc09b5cce9064af7d454813cec6980d1fb4326ae704e3 (64 hex, в Vercel env)
+- **CRON_SETUP.md:** инструкция по настройке 15-минутного cron через бесплатный cron-job.org
+- **Стоимость эксплуатации:** $0 (Vercel Hobby + Neon free + OpenRouter free + cron-job.org free + GitHub free)
