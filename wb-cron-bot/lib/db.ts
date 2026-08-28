@@ -163,6 +163,22 @@ export async function updateShopInstructions(id: number, instructions: string): 
   await db`UPDATE shops SET instructions = ${value} WHERE id = ${id}`
 }
 
+/** Список отзывов со статусом pending_send (ответ сгенерирован, но не дошёл до WB). */
+export async function listPendingSend(shopId: number, limit = 20): Promise<FeedbackRow[]> {
+  const db = getDb()
+  if (!db) return []
+  return await db`
+    SELECT f.id, f.shop_id, s.name AS shop_name, f.nm_id, f.product_name, f.subject_name,
+           f.user_name, f.rating, f.text, f.pros, f.cons, f.photo_links, f.video_url,
+           f.video_preview, f.status, f.answer, f.source, f.error, f.processed_at
+    FROM feedbacks f
+    LEFT JOIN shops s ON s.id = f.shop_id
+    WHERE f.shop_id = ${shopId} AND f.status = 'pending_send'
+    ORDER BY f.processed_at ASC
+    LIMIT ${limit}
+  ` as FeedbackRow[]
+}
+
 // ---------- Многопользовательность: локи и audit log ----------
 
 /** Тип лока: какой магазин сейчас «занимает» пользователь. */
@@ -359,7 +375,7 @@ export async function saveFeedback(
   answer: string | null,
   source: string | null,
   error: string | null,
-  status?: 'answered' | 'draft' | 'error',
+  status?: 'answered' | 'draft' | 'error' | 'pending_send',
 ): Promise<void> {
   const db = getDb()
   if (!db) return

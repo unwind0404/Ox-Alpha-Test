@@ -414,7 +414,7 @@ $('#run-now-btn').addEventListener('click', async (e) => {
   btn.disabled = true
   btn.textContent = 'Запускаю…'
   try {
-    const r = await api('/api/cron-run', { method: 'POST' })
+    const r = await api('/api/cron-all', { method: 'POST' })
     let msg = `Готово: отвечено ${r.answered}, ошибок ${r.failed}`
     if (typeof r.remaining_on_wb === 'number' && r.remaining_on_wb > 0) {
       msg += `. В очереди WB ещё ${r.remaining_on_wb} — обработаются в следующем запуске`

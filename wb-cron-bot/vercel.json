@@ -1,12 +1,12 @@
 {
   "functions": {
-    "api/cron.ts": {
+    "api/cron-all.ts": {
       "maxDuration": 60
     }
   },
   "crons": [
     {
-      "path": "/api/cron",
+      "path": "/api/cron-all",
       "schedule": "0 7 * * *"
     }
   ]

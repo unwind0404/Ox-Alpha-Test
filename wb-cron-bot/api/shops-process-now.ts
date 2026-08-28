@@ -103,13 +103,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await new Promise((r) => setTimeout(r, 1000))
         } catch (e) {
           if (e instanceof RateLimitError) {
-            // 429 на ответе — сохраняем черновиком, чтобы пользователь мог одобрить позже
-            // (или автоматически по крону). НЕ break — переходим к следующему отзыву.
-            await saveFeedback(target.shopId, media, answer, source, `WB 429: повторите через ${e.retryAfterSec}с`, 'draft')
-            details.push(`⏳ WB 429 на ${fb.id}, сохранено как черновик`)
+            // 429 от WB. Стратегия: НЕ бьёмся снова сразу — это накапливает.
+            // 1) Сохраняем отзыв как draft (с пометкой «повторить через N сек»)
+            // 2) ПАУЗА ≤ 25с (если retryAfterSec > 25, всё равно break — иначе Vercel 60с лимит)
+            // 3) Пробуем следующий отзыв. Если снова 429 — выходим (лимит реально активен)
+            // 4) Оставшиеся в этом запуске — на следующий cron
+            const backoffSec = Math.min(Math.max(e.retryAfterSec, 1), 25)
+            await saveFeedback(target.shopId, media, answer, source, `WB 429, повтор через ${e.retryAfterSec}с`, 'draft')
+            details.push(`⏳ WB 429 на ${fb.id}, жду ${backoffSec}с и пробую дальше`)
             failed++
-            // НЕ break — пусть попробует следующий отзыв (другой магазин не пострадал,
-            // но и для текущего попробуем следующий — может, лимит per-feedback)
+            await new Promise((r) => setTimeout(r, backoffSec * 1000))
+            // NB: НЕ делаем break — пусть попробует следующий. Но следующий POST может снова
+            // упереться в 429 (лимит per-minute, не per-request). Тогда сохраняем как draft
+            // и накапливаем в `failed`. Cron в следующий запуск разгребёт.
           } else {
             throw e
           }

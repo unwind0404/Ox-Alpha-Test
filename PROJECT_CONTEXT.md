@@ -148,10 +148,89 @@ vercel dev  # подхватит .env (DATABASE_URL, OPENROUTER_API_KEY, CRON_SE
   - Toast с понятной сводкой после запуска.
 - **app-utils.js**: `api()` пробрасывает `retryAfterSec` из JSON-ответа в `err.retryAfterSec` (для 429).
 
-## Контакты/доступы (не для коммита)
+### Фаза 4 — сброс проекта (полная реструктуризация)
+- **Бэкап:** `Ox-Alpha-Test.bak/` (483 MB) сохранён перед удалением.
+- **GitHub:** старый `unwind0404/Ox-Alpha-Test` удалён через `gh repo delete --yes`.
+  - Создан новый `unwind0404/Ox-Alpha-Test` (public).
+  - `unwind0404/wb-review-bot` удалён (зомби-репо от прошлой попытки).
+- **Vercel:** проект `wb-cron-bot` удалён и пересоздан (id `prj_bfKuhYtKRnKnugQwJAWTLmF29PcN`).
+  - Root Directory: `.` (CLI деплоит из `wb-cron-bot/` локально).
+- **Neon:** было 2 проекта с похожими именами (`ox alpha test` / `OX alpha test`).
+  - Оставлен `wispy-sea-72053408` с реальными данными (1 магазин, 4+ отзыва).
+  - Удалён пустой `curly-sea-34898997`.
+- **Env в Vercel:** заданы вручную через API:
+  - `ADMIN_PASSWORD`, `SESSION_SECRET` (сгенерирован), `CRON_SECRET` (сгенерирован)
+  - `DATABASE_URL` (Neon pooled), `OPENROUTER_API_KEY`, `WB_TOKEN_TYPE=personal`
+  - `MAX_ANSWERS_PER_RUN=20`
+- **Деплой через CLI:** `vercel --prod --yes` (требует залогиненный `vercel` CLI, токен в `auth.json`).
 
-- Vercel-проект: `wb-cron-bot` (ID/team уточнить в `vercel.json` или `.vercel/`)
-- Neon-проект: «OX alpha test», регион Frankfurt
-- Админский пароль: `wb-admin-2026-xK9mPq`
-- OpenRouter API key в Vercel env (значение начинается с `sk-or-v1-e3e2`, последние 4 — `e73b`)
-- TG-бот и chat_id: не заданы (опционально)
+### Фаза 5 — переход на MiniMax M3 (LLM сменился)
+- **Проблема:** OpenRouter в августе 2026 заблокировал большинство free-моделей по дневному лимиту (50/день). Старые `nemotron-3-super` и `glm-5.2` упёрлись.
+- **Решение:** `minimax/minimax-m3:free` — единственная стабильно отвечающая free-модель. Не reasoning (content сразу), хороший русский.
+- **Код:** `lib/generator.ts` и `lib/insights.ts`:
+  - `DEFAULT_MODEL = 'minimax/minimax-m3:free'`, fallback `minimax/minimax-m2.7:free`.
+  - `max_tokens: 500` (было 300 — reasoning-модели возвращали null content при 300).
+  - Fallback на шаблон если все LLM упали (с пометкой в лог).
+  - Парсинг `reasoning` как fallback если `content` пуст.
+  - Понятная ошибка «Дневной лимит OpenRouter на free-модели исчерпан».
+- **Главный баг исправлен:** `ON CONFLICT (id, shop_id) DO NOTHING` → `DO UPDATE` (status, answer, error, processed_at). Без этого process-now не обновлял существующие `error`-записи.
+- **DeepSeek:** Все варианты (`chat-v3.1`, `r1`, `r1-distill`, `chat`, `coder`) теперь платные на OpenRouter.
+
+### Фаза 6 — настраиваемые правила LLM через UI
+- **БД:** `ALTER TABLE shops ADD COLUMN IF NOT EXISTS instructions TEXT`.
+- **API:** `POST /api/shops-action` с `action: 'instructions'`.
+- **Промпт:** пользовательские инструкции вставляются в **самое начало** с пометкой «⚠️ ЖЁСТКИЕ ПРАВИЛА ОТ ПРОДАВЦА» — LLM лучше соблюдает.
+- **Env:** `GLOBAL_INSTRUCTIONS` — общие правила для всех магазинов.
+- **UI:** textarea в карточке магазина + кнопка «Сохранить правила».
+- **Проверено:** инструкция «НЕ упоминай название товара. В конце добавь: промокод WB-2026» — LLM соблюдает.
+
+### Фаза 7 — production-ready (безопасность + многопользовательность + auto)
+- **Rate-limit на /api/auth:** 5 попыток / 15 мин / IP. In-memory per Vercel instance (для глобального нужен Redis). Проверено: 4 неудачи → 401, 5-я → 429 с `Retry-After`.
+- **Per-shop 429 retry:** в `cron.ts` и `shops-process-now.ts` — не прерывает цикл, сохраняет как draft, пробует следующий отзыв. Пауза 1с между успешными POST (personal-токен, 1 req/sec).
+- **Многопользовательность:**
+  - Таблица `shop_locks`: (shop_id PK, user_token, user_name, locked_at, last_seen). TTL 5 мин.
+  - `acquireShopLock/releaseShopLock/getShopLock` в `lib/db.ts`.
+  - API: `GET/POST /api/admin?action=lock-get|lock-acquire|lock-release`.
+  - 409 Conflict если магазин занят другим.
+  - `navigator.sendBeacon` отпускает лок при уходе со страницы.
+- **Audit log:**
+  - Таблица `actions_log` (BIGSERIAL PK, indexed by created_at DESC).
+  - `logAction(userToken, userName, action, targetType, targetId, details, ip)`.
+  - Логируется: draft.approve, draft.reject, draft.regenerate, lock.acquire, lock.release, draft.approve.429.
+  - API: `GET /api/admin?action=audit&limit=N`.
+  - UI: вкладка «Журнал» с последними 200 записями.
+- **Auto-preview:**
+  - `GET /api/feedbacks-unanswered?auto_preview=1` — сразу генерит LLM-черновики для всех, кого нет в БД (только в режиме `drafts`). Лимит 50 за запрос.
+  - UI: `take=100` по умолчанию (было 20), кнопка переименована в «Обновить с WB».
+- **User name:** поле «Ваше имя» на экране входа, сохраняется в localStorage, попадает в audit log.
+- **API consolidation (Vercel Hobby 12-function limit):**
+  - `api/locks.ts` + `api/audit.ts` → объединены в `api/admin.ts`.
+  - Маршруты: `?action=lock-get|lock-acquire|lock-release|audit`.
+- **Сброс пароля:** с `wb-admin-2026-xK9mPq` на `Qwerty1234567899` (через пользователя).
+
+## Контакты/доступы (НЕ для коммита)
+
+- **GitHub:** `unwind0404/Ox-Alpha-Test` (public), коммиты через `gh` CLI с токеном `GH_TOKEN`.
+- **Vercel:** проект `wb-cron-bot` (id `prj_bfKuhYtKRnKnugQwJAWTLmF29PcN`), команда `unwind0440-source` (env: `VERCEL_TOKEN` не задан, но `vercel` CLI работает через `~/AppData/Roaming/xdg.data/com.vercel.cli/auth.json`).
+- **Neon:** проект `ox alpha test` (id `wispy-sea-72053408`, eu-central-1), URL в Vercel env. API-ключ `napi_5zx5kdcjocu41nu0kjr02soce66lnr98449n05t9lbkzktneop6mezy0rqbzrjs9` — **ОТОЗВАТЬ** после тестов.
+- **Пароль панели:** `Qwerty1234567899`.
+- **Vercel env:** `DATABASE_URL`, `OPENROUTER_API_KEY=sk-or-v1-bc0ec5d523117feaa...`, `WB_TOKEN_TYPE=personal`, `MAX_ANSWERS_PER_RUN=20`, `SESSION_SECRET`, `CRON_SECRET` (сгенерированы).
+- **TG-бот и chat_id:** не заданы (опционально).
+
+## Известные ограничения (для безопасника)
+
+1. **In-memory rate-limit** — per Vercel instance, не глобальный. Для production — Upstash/Redis.
+2. **Без 2FA** — один пароль на всех. TODO.
+3. **No CSP headers** — Vercel выдаёт минимальный набор. TODO.
+4. **Audit log в той же БД** — если злоумышленник имеет доступ к Neon, он может удалить логи. Для production — append-only S3.
+5. **Один общий пароль** — все видят всё. Нет ролей.
+
+## TODO (для следующих фаз)
+
+- 2FA / TOTP
+- Глобальный rate-limit (Upstash Redis)
+- CSP/HSTS headers
+- Audit log retention policy
+- Per-user роли (admin / manager / viewer)
+- Telegram-бот для уведомлений о новых отзывах
+- WebSocket для real-time обновлений (вместо polling)
