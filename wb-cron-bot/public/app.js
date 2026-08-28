@@ -28,6 +28,9 @@ async function checkAuth() {
 $('#auth-form').addEventListener('submit', async (e) => {
   e.preventDefault()
   try {
+    // Сохраняем имя пользователя ДО логина (для audit log)
+    const nameEl = $('#auth-name')
+    if (nameEl && nameEl.value.trim()) window.setUserName(nameEl.value)
     await api('/api/auth', { method: 'POST', body: { password: $('#auth-password').value } })
     $('#auth-screen').hidden = true
     showApp()
@@ -488,6 +491,46 @@ async function loadInsights() {
     toast(err.message, 'error')
   }
 }
+
+// ---------- Журнал действий (audit) ----------
+
+async function loadAudit() {
+  const list = $('#audit-list')
+  try {
+    const data = await api('/api/audit?limit=200')
+    if (data.items.length === 0) {
+      list.innerHTML = `<div class="empty"><span class="icon">📝</span>Журнал пуст. Действия появятся здесь после первого approve/reject.</div>`
+      return
+    }
+    const actionNames = {
+      'draft.approve': '✅ Одобрил ответ',
+      'draft.approve.429': '⏳ Rate limit WB',
+      'draft.reject': '🗑️ Отклонил черновик',
+      'draft.regenerate': '🔄 Перегенерировал',
+      'lock.acquire': '🔒 Взял магазин',
+      'lock.release': '🔓 Отпустил магазин',
+    }
+    list.innerHTML = data.items.map(a => {
+      const label = actionNames[a.action] || a.action
+      const target = a.target_id ? ` (${a.target_type || ''}: ${a.target_id.slice(0, 16)}…)` : ''
+      return `<div class="card" style="padding:10px 14px">
+        <div><strong>${esc(label)}</strong>${target}</div>
+        <div class="hint" style="margin-top:4px">${fmtDate(a.created_at)} · IP: ${esc(a.ip || '-')}</div>
+      </div>`
+    }).join('')
+  } catch (err) {
+    toast(err.message, 'error')
+  }
+}
+
+$('#audit-refresh').addEventListener('click', loadAudit)
+
+// Дёргаем loadAudit при заходе на вкладку
+document.querySelectorAll('nav button[data-tab]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    if (btn.dataset.tab === 'audit') loadAudit()
+  }),
+)
 
 $('#insights-shop').addEventListener('change', loadInsights)
 

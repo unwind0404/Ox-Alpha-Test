@@ -99,14 +99,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await saveFeedback(target.shopId, media, answer, source, null, 'answered')
           answered++
           details.push(`✅ ${source === 'template' ? 'шаблон' : 'LLM'} → ${fb.id}`)
+          // Пауза 1с для personal-токена, чтобы следующий POST не упёрся в 429
+          await new Promise((r) => setTimeout(r, 1000))
         } catch (e) {
           if (e instanceof RateLimitError) {
-            // 429 на ответе — сохраняем черновиком и выходим
+            // 429 на ответе — сохраняем черновиком, чтобы пользователь мог одобрить позже
+            // (или автоматически по крону). НЕ break — переходим к следующему отзыву.
             await saveFeedback(target.shopId, media, answer, source, `WB 429: повторите через ${e.retryAfterSec}с`, 'draft')
-            details.push(`⏳ WB 429, сохранено как черновик: ${fb.id}`)
-            break
+            details.push(`⏳ WB 429 на ${fb.id}, сохранено как черновик`)
+            failed++
+            // НЕ break — пусть попробует следующий отзыв (другой магазин не пострадал,
+            // но и для текущего попробуем следующий — может, лимит per-feedback)
+          } else {
+            throw e
           }
-          throw e
         }
       }
     } catch (e) {
@@ -119,10 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error(`[shops-process-now] не удалось сохранить ошибку:`, dbErr instanceof Error ? dbErr.message : dbErr)
       }
     }
-    // пауза, если лимит разрешает больше 1
-    if (MAX_ANSWERS_PER_RUN > 1) {
-      await new Promise((r) => setTimeout(r, 1500))
-    }
+    // (пауза 1с уже встроена в успешный путь, чтобы не дублировать)
   }
 
   return res.status(200).json({

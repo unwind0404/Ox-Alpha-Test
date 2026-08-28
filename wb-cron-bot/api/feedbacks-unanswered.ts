@@ -7,13 +7,14 @@ import { requireAuth } from '../lib/auth.js'
 import { getDb, initDb, saveFeedback, listFeedbacks } from '../lib/db.js'
 import { WbClient, RateLimitError } from '../lib/wb-client.js'
 import { generateAnswer, llmAnswer } from '../lib/generator.js'
+import type { FeedbackInput } from '../lib/db.js'
 
 /** Берёт у WB список неотвеченных, склеивает с БД (какие уже отвечены/черновики/ошибки). */
 async function getUnanswered(req: VercelRequest, res: VercelResponse) {
   const shopId = req.query.shop_id ? Number(req.query.shop_id) : null
   if (!shopId) return res.status(400).json({ error: 'Нужен shop_id' })
 
-  const take = Math.min(Number(req.query.take) || 20, 100) // WB max 5000, но 20 хватит для UI
+  const take = Math.min(Number(req.query.take) || 100, 100) // WB max 5000, берём 100 за раз
 
   const db = getDb()
   if (!db) return res.status(500).json({ error: 'БД не настроена' })
@@ -72,6 +73,45 @@ async function getUnanswered(req: VercelRequest, res: VercelResponse) {
     }
   })
 
+  // Опциональный auto-preview: если ?auto_preview=1, сразу генерируем LLM-превью для всех.
+  // НЕ отправляем на WB — только пишем в БД со status='draft' (чтобы видно в UI).
+  if (req.query.auto_preview === '1' && shops[0].mode === 'drafts') {
+    const limit = Math.min(items.length, 50) // чтобы влезть в 60с Vercel
+    const toPreview = items.slice(0, limit).filter(i => !i.in_db)
+    for (const item of toPreview) {
+      const fb = wbList.find(f => f.id === item.id)
+      if (!fb) continue
+      try {
+        const input = {
+          rating: fb.productValuation ?? undefined,
+          text: fb.text ?? undefined,
+          pros: fb.pros ?? undefined,
+          cons: fb.cons ?? undefined,
+          productName: fb.productDetails?.productName ?? undefined,
+          userName: fb.userName ?? undefined,
+          instructions: shops[0].instructions,
+        } as Parameters<typeof llmAnswer>[0]
+        const answer = await llmAnswer(input)
+        const media = {
+          id: fb.id, nmId: fb.productDetails?.nmId ?? null,
+          productName: fb.productDetails?.productName ?? null,
+          subjectName: fb.subjectName ?? null, userName: fb.userName ?? null,
+          rating: fb.productValuation ?? null, text: fb.text ?? null,
+          pros: fb.pros ?? null, cons: fb.cons ?? null,
+          photoLinks: Array.isArray(fb.photoLinks) ? fb.photoLinks : [],
+          videoUrl: fb.video?.src ?? null, videoPreview: fb.video?.preview ?? null,
+          createdDate: fb.createdDate ?? null,
+        }
+        await saveFeedback(shopId, media, answer, 'llm', null, 'draft')
+        const ex = items.find(i => i.id === fb.id)
+        if (ex) ex.in_db = { status: 'draft', answer, processed_at: new Date().toISOString(), error: null }
+      } catch (e) {
+        // Один упал — продолжаем остальные
+        console.error(`[auto-preview] ${fb.id}: ${e instanceof Error ? e.message : e}`)
+      }
+    }
+  }
+
   return res.status(200).json({
     shop: { id: shops[0].id, name: shops[0].name, mode: shops[0].mode, instructions: shops[0].instructions },
     total_on_wb: wbList.length,
@@ -92,11 +132,11 @@ async function previewOrApprove(req: VercelRequest, res: VercelResponse) {
   if (action !== 'preview' && action !== 'approve') {
     return res.status(400).json({ error: 'action: preview или approve' })
   }
-  // Защита от слишком длинного батча: 1 approve = 1 POST к WB + 1 LLM.
-  // Для 60с лимита Vercel берём не больше 3 за раз.
-  if (feedback_ids.length > 3) {
+  // Клиент дробит выбранные на батчи, чтобы влезть в 60с Vercel free. Жёсткого серверного
+  // лимита нет, но >10 — уже рискованно: WB требует ~3с на каждый POST + 1с пауза + LLM.
+  if (feedback_ids.length > 10) {
     return res.status(400).json({
-      error: 'За раз не больше 3 отзывов (лимит Vercel 60с). Повторите для остальных.',
+      error: 'За один запрос — не больше 10 отзывов. Клиент должен дробить.',
     })
   }
 

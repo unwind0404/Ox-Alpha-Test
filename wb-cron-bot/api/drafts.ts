@@ -3,8 +3,8 @@
 // POST /api/drafts {shop_id, feedback_id, action, answer}
 //   action: 'approve' (отправить на WB) | 'reject' | 'regenerate'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { requireAuth } from '../lib/auth.js'
-import { getDb, listFeedbacks, updateFeedbackDraft } from '../lib/db.js'
+import { requireAuth, getClientIp } from '../lib/auth.js'
+import { getDb, listFeedbacks, updateFeedbackDraft, logAction } from '../lib/db.js'
 import { WbClient, RateLimitError } from '../lib/wb-client.js'
 import { llmAnswer } from '../lib/generator.js'
 
@@ -33,9 +33,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = getDb()
   if (!db) return res.status(500).json({ error: 'БД не настроена' })
 
+  // Идентификатор сессии для audit log
+  const cookies = req.headers.cookie ?? ''
+  const cookieVal = cookies.split(';').map(c => c.trim()).find(c => c.startsWith('wb_session='))
+  const userToken = cookieVal ? cookieVal.slice('wb_session='.length).slice(0, 32) : 'unknown'
+  const ip = getClientIp(req)
+
   // --- Отклонить черновик ---
   if (action === 'reject') {
     await updateFeedbackDraft(shop_id, feedback_id, answer ?? '', 'rejected')
+    await logAction(userToken, 'Аноним', 'draft.reject', 'feedback', feedback_id, { shop_id }, ip)
     return res.status(200).json({ ok: true })
   }
 
@@ -50,11 +57,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       await new WbClient(shops[0].token).answerFeedback(feedback_id, text)
       await updateFeedbackDraft(shop_id, feedback_id, text, 'answered')
+      await logAction(userToken, 'Аноним', 'draft.approve', 'feedback', feedback_id, { shop_id, text_length: text.length }, ip)
       return res.status(200).json({ ok: true })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       if (e instanceof RateLimitError) {
-        // 429: WB сам говорит, через сколько секунд можно повторить
+        await logAction(userToken, 'Аноним', 'draft.approve.429', 'feedback', feedback_id, { retryAfterSec: e.retryAfterSec }, ip)
         return res.status(429).json({
           error: `WB временно ограничил запросы. Попробуйте через ${e.retryAfterSec} сек.`,
           retryAfterSec: e.retryAfterSec,
@@ -102,6 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         UPDATE feedbacks SET status = 'draft', answer = ${newAnswer}
         WHERE id = ${feedback_id} AND shop_id = ${shop_id} AND status = 'draft'
       `
+      await logAction(userToken, 'Аноним', 'draft.regenerate', 'feedback', feedback_id, { shop_id }, ip)
       return res.status(200).json({ ok: true, answer: newAnswer })
     } catch (e) {
       return res.status(500).json({ error: e instanceof Error ? e.message : String(e) })

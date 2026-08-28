@@ -156,6 +156,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             details.push(`${stars} ${target.name}: ${source === 'template' ? 'шаблон' : 'LLM'}`)
             await saveFeedback(target.shopId ?? 0, media, answer, source, null)
             console.log(`[cron] отвечено на ${fb.id} (${source})`)
+            // Пауза 1с для personal-токена (1 req/sec), чтобы не упереться в 429 на следующем
+            await new Promise((r) => setTimeout(r, 1000))
           }
         } catch (e) {
           totalFailed++
@@ -168,10 +170,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             console.error(`[cron] не удалось сохранить ошибку в БД:`, dbErr instanceof Error ? dbErr.message : dbErr)
           }
         }
-        // пауза между обращениями к WB API (для персонального токена)
-        if (MAX_ANSWERS_PER_RUN > 1) {
-          await new Promise((r) => setTimeout(r, 1500))
-        }
+        // (пауза 1с уже встроена в успешный путь, чтобы не дублировать)
       }
       // Учитываем в общей очереди только то, что осталось после нашего прохода
       totalRemainingOnWb += remainingOnWb

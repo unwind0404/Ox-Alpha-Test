@@ -49,3 +49,11 @@ window.toast = function toast(msg, type = '') {
   clearTimeout(el._t)
   el._t = setTimeout(() => (el.className = ''), 3500)
 }
+
+// Имя текущего пользователя (для локов и audit log). Хранится в localStorage.
+window.getUserName = function() {
+  return localStorage.getItem('wb_user_name') || 'Аноним'
+}
+window.setUserName = function(name) {
+  if (name && name.trim()) localStorage.setItem('wb_user_name', name.trim().slice(0, 50))
+}

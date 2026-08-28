@@ -1,5 +1,6 @@
 // Простая авторизация: один админ-пароль (ADMIN_PASSWORD в env).
 // Сессия — подписанная cookie (HMAC), без хранения на сервере.
+// Rate-limit на /api/auth: 5 неудачных попыток за 15 минут с одного IP.
 
 import crypto from 'node:crypto'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
@@ -73,4 +74,47 @@ export function requireAuth(req: VercelRequest, res: VercelResponse): boolean {
     return false
   }
   return true
+}
+
+// ---------- Rate limit ----------
+
+const RATE_LIMIT_MAX = 5 // попыток входа
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000 // 15 минут
+// In-memory хранилище. На Vercel serverless инвокации могут попадать на разные инстансы,
+// поэтому лимит работает per-instance. Для распределённого rate-limit нужен Redis/Upstash,
+// но для базовой защиты от брутфорса in-memory достаточно (лимитирует с одного IP в 90% случаев).
+const rateMap = new Map<string, number[]>()
+
+/** Возвращает IP клиента из заголовков Vercel/Cloudflare. */
+export function getClientIp(req: VercelRequest): string {
+  const xff = req.headers['x-forwarded-for']
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim()
+  if (Array.isArray(xff) && xff.length > 0) return xff[0].trim()
+  return (req.headers['x-real-ip'] as string) || 'unknown'
+}
+
+/** Проверяет, заблокирован ли IP сейчас из-за множества неудачных попыток. */
+export function isIpBlocked(ip: string): { blocked: boolean; retryAfterSec: number } {
+  const now = Date.now()
+  const arr = (rateMap.get(ip) ?? []).filter(t => now - t < RATE_LIMIT_WINDOW_MS)
+  if (arr.length >= RATE_LIMIT_MAX) {
+    const oldest = arr[0]
+    const retryAfterSec = Math.max(1, Math.ceil((RATE_LIMIT_WINDOW_MS - (now - oldest)) / 1000))
+    return { blocked: true, retryAfterSec }
+  }
+  return { blocked: false, retryAfterSec: 0 }
+}
+
+/** Регистрирует неудачную попытку входа с IP. */
+export function recordFailedLogin(ip: string): { blocked: boolean; retryAfterSec: number } {
+  const now = Date.now()
+  const arr = (rateMap.get(ip) ?? []).filter(t => now - t < RATE_LIMIT_WINDOW_MS)
+  arr.push(now)
+  rateMap.set(ip, arr)
+  return isIpBlocked(ip)
+}
+
+/** Сбрасывает счётчик при успешном входе. */
+export function clearFailedLogins(ip: string): void {
+  rateMap.delete(ip)
 }

@@ -40,6 +40,34 @@ export async function initDb(): Promise<void> {
     ADD COLUMN IF NOT EXISTS instructions TEXT
   `
 
+  // Таблица для многопользовательской работы: кто «залочил» магазин
+  await db`
+    CREATE TABLE IF NOT EXISTS shop_locks (
+      shop_id      INTEGER     NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      user_token   TEXT        NOT NULL,
+      user_name    TEXT        NOT NULL DEFAULT 'Аноним',
+      locked_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_seen    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (shop_id)
+    )
+  `
+
+  // Журнал действий (audit log) для безопасника
+  await db`
+    CREATE TABLE IF NOT EXISTS actions_log (
+      id          BIGSERIAL PRIMARY KEY,
+      user_token  TEXT        NOT NULL,
+      user_name   TEXT        NOT NULL DEFAULT 'Аноним',
+      action      TEXT        NOT NULL,
+      target_type TEXT,
+      target_id   TEXT,
+      details     JSONB,
+      ip          TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `
+  await db`CREATE INDEX IF NOT EXISTS idx_actions_log_created ON actions_log (created_at DESC)`
+
   await db`
     CREATE TABLE IF NOT EXISTS feedbacks (
       id            TEXT        NOT NULL,
@@ -133,6 +161,92 @@ export async function updateShopInstructions(id: number, instructions: string): 
   // Пустую строку сохраняем как null, чтобы в БД не было пустых записей
   const value = instructions.trim() ? instructions.trim() : null
   await db`UPDATE shops SET instructions = ${value} WHERE id = ${id}`
+}
+
+// ---------- Многопользовательность: локи и audit log ----------
+
+/** Тип лока: какой магазин сейчас «занимает» пользователь. */
+export type ShopLock = {
+  shop_id: number
+  user_token: string
+  user_name: string
+  locked_at: string
+  last_seen: string
+}
+
+/** Проверить, кто сейчас «залочил» магазин (если лочил). Возвращает null, если свободен. */
+export async function getShopLock(shopId: number): Promise<ShopLock | null> {
+  const db = getDb()
+  if (!db) return null
+  // Лок считается истёкшим, если last_seen старше 5 минут
+  const rows = await db`SELECT shop_id, user_token, user_name, locked_at, last_seen FROM shop_locks
+    WHERE shop_id = ${shopId} AND last_seen > now() - interval '5 minutes'` as ShopLock[]
+  return rows[0] ?? null
+}
+
+/** Занять магазин (или обновить свой лок). */
+export async function acquireShopLock(shopId: number, userToken: string, userName: string): Promise<void> {
+  const db = getDb()
+  if (!db) return
+  await db`
+    INSERT INTO shop_locks (shop_id, user_token, user_name, locked_at, last_seen)
+    VALUES (${shopId}, ${userToken}, ${userName}, now(), now())
+    ON CONFLICT (shop_id) DO UPDATE SET
+      user_token = EXCLUDED.user_token,
+      user_name = EXCLUDED.user_name,
+      locked_at = now(),
+      last_seen = now()
+  `
+}
+
+/** Отпустить лок (если он наш). */
+export async function releaseShopLock(shopId: number, userToken: string): Promise<void> {
+  const db = getDb()
+  if (!db) return
+  await db`DELETE FROM shop_locks WHERE shop_id = ${shopId} AND user_token = ${userToken}`
+}
+
+// ---------- Audit log ----------
+
+export type ActionLog = {
+  id: number
+  user_token: string
+  user_name: string
+  action: string
+  target_type: string | null
+  target_id: string | null
+  details: Record<string, unknown> | null
+  ip: string | null
+  created_at: string
+}
+
+/** Записать действие в журнал. */
+export async function logAction(
+  userToken: string,
+  userName: string,
+  action: string,
+  targetType: string | null,
+  targetId: string | null,
+  details: Record<string, unknown> | null,
+  ip: string | null,
+): Promise<void> {
+  const db = getDb()
+  if (!db) return
+  try {
+    await db`
+      INSERT INTO actions_log (user_token, user_name, action, target_type, target_id, details, ip)
+      VALUES (${userToken}, ${userName}, ${action}, ${targetType}, ${targetId}, ${details ? db.json(details) : null}, ${ip})
+    `
+  } catch (e) {
+    console.error(`[audit] не удалось записать действие: ${e instanceof Error ? e.message : e}`)
+  }
+}
+
+/** Получить последние N записей журнала (для UI безопасника). */
+export async function listActions(limit = 100): Promise<ActionLog[]> {
+  const db = getDb()
+  if (!db) return []
+  return await db`SELECT * FROM actions_log ORDER BY created_at DESC LIMIT ${limit}` as ActionLog[]
 }
 
 /** Алиас для панели (кнопка Вкл/Выкл). */

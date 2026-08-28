@@ -30,23 +30,53 @@ async function loadUnanswered() {
   btn.disabled = true
   btn.textContent = 'Загружаю с WB…'
   status.textContent = ''
+
+  // Пытаемся взять лок. Если занят другим — покажем и не будем загружать.
   try {
-    const data = await api(`/api/feedbacks-unanswered?shop_id=${shopId}&take=20`)
+    const lockRes = await api('/api/locks', {
+      method: 'POST',
+      body: { shop_id: Number(shopId), action: 'acquire', user_name: window.getUserName() },
+    }).catch(e => e) // 409 = занят
+    if (lockRes.status === 409) {
+      status.textContent = `⚠️ Магазин сейчас работает: ${lockRes.lock?.user_name || 'другой пользователь'}. Попробуйте позже.`
+      btn.disabled = false
+      btn.textContent = 'Обновить с WB'
+      return
+    }
+  } catch (e) { /* не блокируем на ошибке лока */ }
+
+  try {
+    // Берём 100 (max), с auto_preview=1 — бэкенд сразу генерит LLM-черновики для всех,
+    // кто ещё не в БД. Это работает только в режиме 'drafts'.
+    const data = await api(`/api/feedbacks-unanswered?shop_id=${shopId}&take=100&auto_preview=1`)
     unansweredState = {
       items: data.items,
       shopId: Number(shopId),
       shopName: data.shop.name,
     }
-    status.textContent = `Загружено: ${data.total_on_wb} с WB${data.items.some((i) => i.in_db) ? ' (некоторые уже есть в БД)' : ''}`
+    const drafted = data.items.filter(i => i.in_db && i.in_db.status === 'draft').length
+    const newOnes = data.items.filter(i => !i.in_db).length
+    let msg = `Загружено: ${data.total_on_wb} с WB`
+    if (newOnes > 0) msg += `, ${newOnes} новых (превью генерится в фоне)`
+    if (drafted > 0) msg += `, ${drafted} уже с превью`
+    status.textContent = msg
     renderUnansweredList()
   } catch (err) {
     status.textContent = err.message
     if (err.status === 401) location.reload()
   } finally {
     btn.disabled = false
-    btn.textContent = 'Загрузить с WB'
+    btn.textContent = 'Обновить с WB'
   }
 }
+
+// При уходе со страницы — отпустить лок
+window.addEventListener('beforeunload', () => {
+  if (unansweredState.shopId) {
+    const sid = unansweredState.shopId
+    navigator.sendBeacon?.('/api/locks', JSON.stringify({ shop_id: sid, action: 'release', user_name: window.getUserName() }))
+  }
+})
 
 function renderUnansweredList() {
   const el = $('#unanswered-list')
@@ -198,55 +228,80 @@ async function handleSingleAction(id, action, card) {
 async function handleBatch(action) {
   const ids = getSelectedIds()
   if (ids.length === 0) return toast('Сначала выберите отзывы', 'error')
-  if (ids.length > 3) return toast('За раз не больше 3 (лимит Vercel 60с)', 'error')
 
   const btnId = action === 'preview' ? '#unanswered-preview-selected' : '#unanswered-approve-selected'
   const btn = $(btnId)
   btn.disabled = true
-  btn.textContent = action === 'preview' ? 'Генерирую…' : 'Отправляю…'
+  const originalText = btn.textContent
+
+  // Клиентский батчинг по 3: каждый запрос укладывается в 60с Vercel free.
+  // Кнопка показывает прогресс «Обрабатываю батч 1/5…».
+  const BATCH_SIZE = 3
+  const batches = []
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    batches.push(ids.slice(i, i + BATCH_SIZE))
+  }
+
+  let totalOk = 0
+  let totalErr = 0
+  const errDetails = []
 
   try {
-    const r = await api('/api/feedbacks-unanswered', {
-      method: 'POST',
-      body: { shop_id: unansweredState.shopId, feedback_ids: ids, action },
-    })
-
-    let okCount = 0
-    let errCount = 0
-    for (const res of r.results) {
-      const card = findCard(res.id)
-      if (!card) continue
-      const preview = card.querySelector('[data-role="preview"]')
-      preview.hidden = false
-      if (!res.ok) {
-        errCount++
-        preview.innerHTML = `<span class="label">Ошибка</span>${esc(res.error || 'неизвестно')}`
-        if (res.retryAfterSec) preview.innerHTML += `<br><span class="hint">Повторите через ${res.retryAfterSec} сек.</span>`
-      } else if (action === 'preview') {
-        okCount++
-        preview.innerHTML = `<span class="label">Превью (${res.source})</span>${esc(res.answer)}`
-      } else {
-        okCount++
-        preview.innerHTML = `<span class="label">✅ Отправлено (${res.source})</span>${esc(res.answer)}`
-        const inDbBadge = card.querySelector('.unanswered-in-db')
-        inDbBadge.className = 'unanswered-in-db answered'
-        inDbBadge.textContent = 'уже отвечен'
-        card.querySelector('.approve-one').disabled = true
-        card.querySelector('.unanswered-pick').checked = false
+    for (let i = 0; i < batches.length; i++) {
+      btn.textContent = `Батч ${i + 1}/${batches.length}…`
+      try {
+        const r = await api('/api/feedbacks-unanswered', {
+          method: 'POST',
+          body: { shop_id: unansweredState.shopId, feedback_ids: batches[i], action },
+        })
+        for (const res of r.results) {
+          const card = findCard(res.id)
+          if (!card) continue
+          const preview = card.querySelector('[data-role="preview"]')
+          preview.hidden = false
+          if (!res.ok) {
+            totalErr++
+            errDetails.push(res.id)
+            preview.innerHTML = `<span class="label">Ошибка</span>${esc(res.error || 'неизвестно')}`
+            if (res.retryAfterSec) preview.innerHTML += `<br><span class="hint">Повторите через ${res.retryAfterSec} сек.</span>`
+          } else if (action === 'preview') {
+            totalOk++
+            preview.innerHTML = `<span class="label">Превью (${res.source})</span>${esc(res.answer)}`
+          } else {
+            totalOk++
+            preview.innerHTML = `<span class="label">✅ Отправлено (${res.source})</span>${esc(res.answer)}`
+            const inDbBadge = card.querySelector('.unanswered-in-db')
+            inDbBadge.className = 'unanswered-in-db answered'
+            inDbBadge.textContent = 'уже отвечен'
+            card.querySelector('.approve-one').disabled = true
+            card.querySelector('.unanswered-pick').checked = false
+          }
+        }
+        // Если в этом батче хоть один упал из-за rate limit — прекращаем (остальные тоже упрутся)
+        const rateLimit = r.results.find(x => !x.ok && x.retryAfterSec)
+        if (rateLimit) {
+          toast(`WB ограничил запросы на ${rateLimit.retryAfterSec}с. Остальные батчи пропущены.`, 'error')
+          break
+        }
+      } catch (err) {
+        // Один батч упал целиком — продолжаем остальные
+        totalErr += batches[i].length
+        errDetails.push(...batches[i])
+        if (err.status === 429 && err.retryAfterSec) {
+          toast(`WB 429, жду ${err.retryAfterSec}с. Остальные батчи пропущены.`, 'error')
+          break
+        }
+        toast(`Батч ${i + 1} не прошёл: ${err.message}. Продолжаю…`, 'error')
       }
     }
-    toast(
-      action === 'preview'
-        ? `Превью готово: ${okCount}, ошибок ${errCount}`
-        : `Отправлено: ${okCount}, ошибок ${errCount}`,
-      errCount > 0 ? 'error' : 'ok',
-    )
+    const summary = action === 'preview'
+      ? `Превью: ${totalOk} готово, ${totalErr} ошибок (из ${ids.length})`
+      : `Отправлено: ${totalOk}, ошибок ${totalErr} (из ${ids.length})`
+    toast(summary, totalErr > 0 ? 'error' : 'ok')
     updateSelectedCount()
-  } catch (err) {
-    toast(err.message, 'error')
   } finally {
     btn.disabled = false
-    btn.textContent = action === 'preview' ? 'Сгенерировать превью (выбранные)' : 'Одобрить и отправить (выбранные)'
+    btn.textContent = originalText
   }
 }
 

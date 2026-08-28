@@ -14,6 +14,7 @@
       <h1>WB Review Bot</h1>
       <p class="subtitle">Панель управления автоответами</p>
       <form id="auth-form">
+        <input id="auth-name" type="text" placeholder="Ваше имя (для совместной работы)" autocomplete="name" maxlength="50" style="margin-bottom:8px" />
         <input id="auth-password" type="password" placeholder="Пароль администратора" autocomplete="current-password" required />
         <button type="submit">Войти</button>
         <p class="hint error" id="auth-error"></p>
@@ -31,6 +32,7 @@
         <button data-tab="drafts">Черновики</button>
         <button data-tab="feedbacks">Отзывы</button>
         <button data-tab="insights">Аналитика</button>
+        <button data-tab="audit">Журнал</button>
       </nav>
       <button id="logout-btn" class="ghost">Выйти</button>
     </header>
@@ -95,6 +97,15 @@
           За раз обрабатывается до 3 отзывов (лимит Vercel 60с).
         </p>
         <div id="unanswered-list"></div>
+      </section>
+
+      <!-- Журнал действий (audit) -->
+      <section id="tab-audit" hidden>
+        <div class="toolbar">
+          <span class="hint">Последние действия пользователей (для безопасника).</span>
+          <button id="audit-refresh" class="ghost">Обновить</button>
+        </div>
+        <div id="audit-list"></div>
       </section>
 
       <!-- Отзывы -->
