@@ -3,6 +3,7 @@ name = "wb-review-bot"
 main = "src/index.ts"
 compatibility_date = "2024-09-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "c1a7f41d7163e5eea84fca90de69548c"
 
 # Build
 [build]
@@ -24,7 +25,7 @@ ENVIRONMENT = "production"
 [[d1_databases]]
 binding = "DB"
 database_name = "wb-review-bot-db"
-database_id = "REPLACE_AFTER_WRANGLER_D1_CREATE"
+database_id = "b50928da-cfae-49c2-94c7-dd95661ccd7d"
 migrations_dir = "migrations"
 
 # Durable Object (per wb_account_key)
