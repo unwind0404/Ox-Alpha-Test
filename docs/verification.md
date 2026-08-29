@@ -54,6 +54,34 @@
 - **Деплой:** НЕ выполнен (нет D1 binding, нет секретов в production env)
 - **Остаточные риски:** Task 3 только входная точка. Scheduled handler — stub (Task 6/9 реализует).
 
+## Task 4 — AES-256-GCM token encryption
+
+- **Дата:** 2026-08-29
+- **Статус:** ✅ готово
+- **Что сделано:**
+  - `token-crypto.ts`: Web Crypto API (no deps)
+  - AES-256-GCM encrypt/decrypt with random 12-byte IV
+  - AAD = `wb-bot:shop-token:v1` (binds ciphertext to context)
+  - HMAC-SHA-256 fingerprint (32 bytes = 64 hex chars) for unique token ID
+  - `generateKeys()` helper: 32 bytes each, base64
+  - keyVersion=1 (rotatable later)
+- **Тесты (12):** round-trip, different IVs, stable fingerprint, tampered ciphertext/IV, wrong key, wrong keyVersion, empty/short keys, large tokens
+- **npm run verify:** 0 errors, 89 tests pass
+
+## Task 5 — WB API client + rate-limit headers
+
+- **Дата:** 2026-08-29
+- **Статус:** ✅ готово
+- **Что сделано:**
+  - `allowlist.ts`: только production/sandbox WB hosts
+  - `rate-headers.ts`: парсер `X-RateLimit-Retry`/`X-RateLimit-Reset`/`X-RateLimit-Remaining`
+  - `wb-client.ts`: `Authorization: Bearer <token>`, AbortSignal timeout 12s, body limit 256KB
+  - Methods: `listUnanswered({take, skip, dateFrom})`, `getFeedback(id)`, `postReply(id, text)`
+  - 204 → success (no body), 4xx/5xx → typed Result, parse errors → typed Result
+  - Сам НЕ retry и НЕ sleep — это coordinator
+- **Тесты (17):** allowlist (5), rate-headers (7), client construction (4), Bearer header (2), listUnanswered (2), postReply (3), timeout, 4xx/5xx, parse errors
+- **npm run verify:** 0 errors, 117 tests pass
+
 - Task 2: D1 migrations + repositories impl
 - Task 3: Cloudflare Access JWT, scheduled handler, security headers
 - Task 4: AES-256-GCM token encryption
