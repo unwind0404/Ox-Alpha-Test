@@ -1,0 +1,45 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "wb-review-bot"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Build
+[build]
+command = "npm run build"
+
+# Vars (non-secret)
+[vars]
+DEPLOYMENT_MODE = "cloud"
+DEFAULT_STRATEGY = "drafts"
+ENVIRONMENT = "production"
+
+# Placeholder for secrets — must be set via `wrangler secret put` or dashboard
+# ADMIN_EMAILS = "..."  # Cloudflare Access emails
+# MASTER_KEY = "..."     # AES-256-GCM key (32 random bytes, base64)
+# FINGERPRINT_KEY = "..."  # HMAC key for token fingerprint
+# WB_API_BASE = "https://feedbacks-api.wildberries.ru"
+
+# D1
+[[d1_databases]]
+binding = "DB"
+database_name = "wb-review-bot-db"
+database_id = "REPLACE_AFTER_WRANGLER_D1_CREATE"
+migrations_dir = "migrations"
+
+# Durable Object (per wb_account_key)
+[[durable_objects.bindings]]
+name = "COORDINATOR"
+class_name = "ShopCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ShopCoordinator"]
+
+# Cron: 07:00 UTC daily sync
+[triggers]
+crons = ["0 7 * * *"]
+
+# Limits
+[limits]
+cpu_ms = 30000

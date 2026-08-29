@@ -1,0 +1,4 @@
+# Скопируйте в .dev.vars для локальной разработки (НЕ коммитьте .dev.vars)
+DEPLOYMENT_MODE="cloud"
+DEFAULT_STRATEGY="drafts"
+LOG_LEVEL="debug"

@@ -1,33 +1,34 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-
 # Dependencies
-node_modules
+node_modules/
 
 # Build
-dist
-build
-.vercel
+dist/
+.wrangler/
+*.tsbuildinfo
 
 # Env
 .env
 .env.local
 .env.*.local
+.dev.vars
 
 # Editor
-.vscode/*
-!.vscode/extensions.json
-.idea
+.vscode/
+.idea/
+*.swp
 .DS_Store
 
-# Misc
-*.tsbuildinfo
-*.db
-*.db-shm
-*.db-wal
-cookies.txt
+# Tests
+coverage/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Lock for Vercel (now obsolete)
+.vercel/
+
+# Old bot (deprecated, kept for reference)
+src/legacy/
