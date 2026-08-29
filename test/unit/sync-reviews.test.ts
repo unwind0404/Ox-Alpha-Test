@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { syncUnanswered } from '../../src/coordinator/sync-reviews.js'
 import type { WbClient, WbFeedback, WbResult } from '../../src/adapters/wb/wb-client.js'
 import type { ReviewRepository, JobRepository } from '../../src/ports/repositories.js'
-import type { Review, ReplyJob } from '../../src/core/types.js'
+import type { Review } from '../../src/core/types.js'
 
 const T0 = 1_700_000_000_000
 
@@ -204,29 +204,29 @@ describe('sync-reviews: validation', () => {
 describe('sync-reviews: rating clamping', () => {
   it('rating=5 → Review.rating=5', async () => {
     const wb = makeMockWb([makeFeedback({ id: 'fb-1', productValuation: 5 })])
-    let capturedReview: Review | null = null
+    const reviews: Review[] = []
     const reviewRepo = {
       ...makeMockReviewRepo(),
-      upsert: vi.fn().mockImplementation(async (r: Review) => { capturedReview = r; return true }),
+      upsert: vi.fn().mockImplementation(async (r: Review) => { reviews.push(r); return true }),
     } as unknown as ReviewRepository & { upsert: ReturnType<typeof vi.fn> }
     const jobRepo = makeMockJobRepo()
     await syncUnanswered('shop-1', wb, reviewRepo, jobRepo, 'drafts', T0)
-    expect(capturedReview).not.toBeNull()
-    expect(capturedReview?.rating).toBe(5)
+    expect(reviews).toHaveLength(1)
+    expect(reviews[0]!.rating).toBe(5)
   })
 
   it('rating=null (нет productValuation) → Review.rating=null', async () => {
     const fb = makeFeedback({ id: 'fb-1' })
     delete fb.productValuation
     const wb = makeMockWb([fb])
-    let capturedReview: Review | null = null
+    const reviews: Review[] = []
     const reviewRepo = {
       ...makeMockReviewRepo(),
-      upsert: vi.fn().mockImplementation(async (r: Review) => { capturedReview = r; return true }),
+      upsert: vi.fn().mockImplementation(async (r: Review) => { reviews.push(r); return true }),
     } as unknown as ReviewRepository & { upsert: ReturnType<typeof vi.fn> }
     const jobRepo = makeMockJobRepo()
     await syncUnanswered('shop-1', wb, reviewRepo, jobRepo, 'drafts', T0)
-    expect(capturedReview).not.toBeNull()
-    expect(capturedReview?.rating).toBe(null)
+    expect(reviews).toHaveLength(1)
+    expect(reviews[0]!.rating).toBe(null)
   })
 })
