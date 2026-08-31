@@ -24,7 +24,7 @@ export interface ForecastJob {
   queuePosition: number
 }
 
-const JITTER_MS = 5_000 // ±5 сек, чтобы не все запросы уходили ровно в 12:00
+const JITTER_MS = 2_000 // ±2 сек, чтобы не все запросы уходили ровно в 12:00
 
 function withJitter(baseMs: number): number {
   // Детерминированный jitter на основе времени (всё в окне 12 мин)

@@ -13,6 +13,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "verify": "npm run typecheck && npm run lint && npm test",
+    "check:env": "tsx scripts/check-env.ts",
+    "smoke:staging": "tsx scripts/smoke-staging.ts",
     "db:migrate:local": "wrangler d1 migrations apply wb-review-bot-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply wb-review-bot-db --remote"
   },
@@ -22,6 +24,7 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.0.0",
     "wrangler": "^4.0.0"
