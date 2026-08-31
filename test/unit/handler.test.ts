@@ -41,9 +41,9 @@ describe('index: fetch handler', () => {
   })
 
   it('неизвестный admin путь без Access — 401 (auth первая)', async () => {
-    // Без Access-headers любой admin путь возвращает 401, даже несуществующий.
+    // Без Access-headers любой /api/* путь возвращает 401, даже несуществующий.
     // Это безопаснее: не раскрываем структуру URL.
-    const res = await fetch(makeRequest('/unknown-admin-path'), baseEnv, ctx)
+    const res = await fetch(makeRequest('/api/admin/unknown-route'), baseEnv, ctx)
     expect(res.status).toBe(401)
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
   })
@@ -86,7 +86,7 @@ describe('index: fetch handler', () => {
 
   it('admin путь с Access но неизвестный URL — 404', async () => {
     const res = await fetch(
-      makeRequest('/api/admin/unknown-route', {
+      makeRequest('/api/admin/unknown-route2', {
         headers: {
           'Cf-Access-Client-Id': 'cid-123',
           'Cf-Access-Client-Secret': 'sec-abc',

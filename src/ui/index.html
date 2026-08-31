@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WB Review Bot — Панель</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🤖 WB Review Bot</h1>
+    <div class="header-actions">
+      <span id="connection-status" class="status-pill">Загрузка…</span>
+      <button id="refresh-btn" class="ghost">Обновить</button>
+    </div>
+  </header>
+
+  <nav>
+    <button data-tab="queue" class="active">Очередь</button>
+    <button data-tab="shops">Магазины</button>
+    <button data-tab="audit">Журнал</button>
+  </nav>
+
+  <main>
+    <section id="tab-queue" class="active">
+      <div class="metrics-row" id="metrics-row"></div>
+      <h2>Отзывы в очереди</h2>
+      <div class="filter-bar">
+        <select id="filter-shop"><option value="">Все магазины</option></select>
+        <select id="filter-status">
+          <option value="">Все статусы</option>
+          <option value="new">Новые</option>
+          <option value="awaiting_approval">Черновики</option>
+          <option value="scheduled">Запланированы</option>
+          <option value="published_on_wb">Опубликованы</option>
+          <option value="manual_review">Нужна проверка</option>
+          <option value="failed">Ошибки</option>
+        </select>
+      </div>
+      <div id="review-list" class="review-list"></div>
+    </section>
+
+    <section id="tab-shops" hidden>
+      <h2>Магазины</h2>
+      <div id="shop-list" class="shop-list"></div>
+    </section>
+
+    <section id="tab-audit" hidden>
+      <h2>Журнал действий</h2>
+      <div id="audit-list" class="audit-list"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
