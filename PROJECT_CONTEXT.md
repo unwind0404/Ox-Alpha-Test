@@ -262,7 +262,106 @@ vercel dev  # подхватит .env (DATABASE_URL, OPENROUTER_API_KEY, CRON_SE
 4. Schedule: каждые 15 мин
 5. Теперь бот будет обрабатывать ~3 отзыва каждые 15 мин = 96/день автономно
 
-## Текущий статус (на 2026-08-28)
+## Phase 9 — полная переделка по плану "Basic Now, Personal Later"
+
+> **Источник плана:** `docs/architecture/basic-now-personal-later.md` (приложен к аудиту).
+> Все 13 Tasks выполнены. Код компилируется без ошибок, 238 тестов зелёные.
+
+### Что сделано (Task 1–13)
+
+| # | Задача | Файлы |
+|---|---|---|
+| 1 | strict TypeScript + vitest + CI | `tsconfig.json`, `vitest.config.ts`, `.github/workflows/ci.yml` |
+| 2 | D1 schema + repositories | `migrations/0001_initial.sql`, 5 D1 адаптеров |
+| 3 | Cloudflare Access + scheduled + headers | `access-auth.ts`, `src/index.ts` |
+| 4 | AES-256-GCM token encryption | `token-crypto.ts` |
+| 5 | WB client + rate-limit headers | `allowlist.ts`, `rate-headers.ts`, `wb-client.ts` |
+| 6 | Daily sync (syncUnanswered) | `coordinator/sync-reviews.ts` |
+| 7 | Coordinator + send-forecast + DO stub | `shop-coordinator.ts`, `do-scheduler.ts`, `send-forecast.ts` |
+| 8 | LLM + output gate + reply policy + templates | `reply-policy.ts`, `reply-templates.ts`, `output-gate.ts`, `openrouter-client.ts` |
+| 9 | Idempotent publish + reconcile | `coordinator/publish-replies.ts` |
+| 10 | Admin UI (vanilla JS) | `src/ui/{index.html,style.css,app.js,types.ts}`, 7 admin API |
+| 11 | Retention (90d reviews / 180d audits) | `coordinator/retention.ts` |
+| 12 | Shadow/drafts pilot docs | `docs/operations.md`, `scripts/{check-env,smoke-staging}.ts` |
+| 13 | Phase 2 prep (self-managed server) | `server-later/README.md`, token matrix tests |
+
+### Acceptance — что проверено
+
+- ✅ `npm run verify` — 0 ошибок, 238 тестов проходят
+- ✅ `npm run smoke:staging` — basic 100 replies ≥ 20h, personal 10 < 60s
+- ✅ `npm run check:env` — валидация env-vars
+- ✅ Architecture test — `src/core` и `src/ports` не импортируют Cloudflare/Node/React
+- ✅ Token matrix — fail-closed (cloud+personal ЗАПРЕЩЕНО, self_managed+basic ЗАПРЕЩЕНО)
+- ✅ Output gate — length 2–5000, URL allowlist, no email/phone/HTML, RU+EN injection detection
+- ✅ LLM — primary + fallback, output gate, 25 prompt injection test cases
+
+### Что НЕ реализовано (см. TODO выше + Phase 2)
+
+- 2FA / TOTP
+- Глобальный rate-limit (Upstash Redis)
+- Полноценный UI с фильтрами, timeline, polling 30s (сделан MVP)
+- Telegram-бот для уведомлений
+- WebSocket real-time
+- Per-user роли
+
+### Phase 2: миграция на Personal token
+
+См. `server-later/README.md`. Ключевые моменты:
+- **Lock при миграции:** cloud kill switch → дождаться окончания tick → переключить
+- **Fail-closed token matrix:** `cloud+personal` и `self_managed+basic` ЗАПРЕЩЕНЫ
+- **Core не меняется** — только adapters (D1 → SQLite, CF Access → basic auth)
+
+## Текущий статус (на 2026-08-28 — обновлено)
+## Phase 9 — полная переделка по плану "Basic Now, Personal Later"
+
+> **Источник плана:** `docs/architecture/basic-now-personal-later.md` (приложен к аудиту).
+> Все 13 Tasks выполнены. Код компилируется без ошибок, 238 тестов зелёные.
+
+### Что сделано (Task 1–13)
+
+| # | Задача | Файлы |
+|---|---|---|
+| 1 | strict TypeScript + vitest + CI | `tsconfig.json`, `vitest.config.ts`, `.github/workflows/ci.yml` |
+| 2 | D1 schema + repositories | `migrations/0001_initial.sql`, 5 D1 адаптеров |
+| 3 | Cloudflare Access + scheduled + headers | `access-auth.ts`, `src/index.ts` |
+| 4 | AES-256-GCM token encryption | `token-crypto.ts` |
+| 5 | WB client + rate-limit headers | `allowlist.ts`, `rate-headers.ts`, `wb-client.ts` |
+| 6 | Daily sync (syncUnanswered) | `coordinator/sync-reviews.ts` |
+| 7 | Coordinator + send-forecast + DO stub | `shop-coordinator.ts`, `do-scheduler.ts`, `send-forecast.ts` |
+| 8 | LLM + output gate + reply policy + templates | `reply-policy.ts`, `reply-templates.ts`, `output-gate.ts`, `openrouter-client.ts` |
+| 9 | Idempotent publish + reconcile | `coordinator/publish-replies.ts` |
+| 10 | Admin UI (vanilla JS) | `src/ui/{index.html,style.css,app.js,types.ts}`, 7 admin API |
+| 11 | Retention (90d reviews / 180d audits) | `coordinator/retention.ts` |
+| 12 | Shadow/drafts pilot docs | `docs/operations.md`, `scripts/{check-env,smoke-staging}.ts` |
+| 13 | Phase 2 prep (self-managed server) | `server-later/README.md`, token matrix tests |
+
+### Acceptance — что проверено
+
+- ✅ `npm run verify` — 0 ошибок, 238 тестов проходят
+- ✅ `npm run smoke:staging` — basic 100 replies ≥ 20h, personal 10 < 60s
+- ✅ `npm run check:env` — валидация env-vars
+- ✅ Architecture test — `src/core` и `src/ports` не импортируют Cloudflare/Node/React
+- ✅ Token matrix — fail-closed (cloud+personal ЗАПРЕЩЕНО, self_managed+basic ЗАПРЕЩЕНО)
+- ✅ Output gate — length 2–5000, URL allowlist, no email/phone/HTML, RU+EN injection detection
+- ✅ LLM — primary + fallback, output gate, 25 prompt injection test cases
+
+### Что НЕ реализовано (см. TODO выше + Phase 2)
+
+- 2FA / TOTP
+- Глобальный rate-limit (Upstash Redis)
+- Полноценный UI с фильтрами, timeline, polling 30s (сделан MVP)
+- Telegram-бот для уведомлений
+- WebSocket real-time
+- Per-user роли
+
+### Phase 2: миграция на Personal token
+
+См. `server-later/README.md`. Ключевые моменты:
+- **Lock при миграции:** cloud kill switch → дождаться окончания tick → переключить
+- **Fail-closed token matrix:** `cloud+personal` и `self_managed+basic` ЗАПРЕЩЕНЫ
+- **Core не меняется** — только adapters (D1 → SQLite, CF Access → basic auth)
+
+## Текущий статус (на 2026-08-28 — обновлено)
 - **Готово к продакшну:** rate-limit, audit log, locks, instructions, auto-preview, cron-all (main+tail), pending_send против 429
 - **Частично:** cron (только 1 раз в день на Hobby — обход через cron-job.org, см. CRON_SETUP.md)
 - **Не готово:** 2FA, CSP, real-time updates
