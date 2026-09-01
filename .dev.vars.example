@@ -1,4 +1,27 @@
-# Скопируйте в .dev.vars для локальной разработки (НЕ коммитьте .dev.vars)
+# Пример .dev.vars для локальной разработки.
+# Скопируйте в .dev.vars и подставьте свои значения.
+
+# === Runtime ===
 DEPLOYMENT_MODE="cloud"
-DEFAULT_STRATEGY="drafts"
-LOG_LEVEL="debug"
+ENVIRONMENT="dev"
+
+# === WB API ===
+WB_API_BASE="https://feedbacks-api.wildberries.ru"
+WB_TOKEN_TYPE="basic"
+# Сам токен НЕ хранится в .dev.vars — он в БД (D1), зашифрован.
+
+# === OpenRouter ===
+OPENROUTER_API_KEY="sk-or-v1-REPLACE_ME"
+
+# === Безопасность (для dev — любые непустые) ===
+ADMIN_PASSWORD="dev-password"
+SESSION_SECRET="dev-session-secret-min-32-chars-long-string"
+CRON_SECRET="dev-cron-secret"
+MASTER_KEY="dev-master-key-32-bytes-base64==="
+FINGERPRINT_KEY="dev-fingerprint-key-32-bytes-base64==="
+
+# === Cron ===
+MAX_ANSWERS_PER_RUN="20"
+
+# === D1 (для wrangler dev) ===
+# DATABASE_URL="file:./dev.db"  # wrangler создаст локально
