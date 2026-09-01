@@ -269,3 +269,9 @@ async function runDailySync(env: Env): Promise<void> {
   console.log(`[scheduled] would sync, deployment=${env.DEPLOYMENT_MODE}`)
   // TODO: coordinator.tick() для каждого активного магазина
 }
+
+/** Module worker default export (для DO поддержки). */
+export default {
+  fetch,
+  scheduled,
+}

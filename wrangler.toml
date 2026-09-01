@@ -7,7 +7,7 @@ account_id = "c1a7f41d7163e5eea84fca90de69548c"
 
 # Build
 [build]
-command = "npm run build"
+command = "npx esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=dist/index.js"
 
 # Vars (non-secret)
 [vars]
@@ -28,19 +28,12 @@ database_name = "wb-review-bot-db"
 database_id = "b50928da-cfae-49c2-94c7-dd95661ccd7d"
 migrations_dir = "migrations"
 
-# Durable Object (per wb_account_key)
-[[durable_objects.bindings]]
-name = "COORDINATOR"
-class_name = "ShopCoordinator"
 
-[[migrations]]
-tag = "v1"
-new_classes = ["ShopCoordinator"]
 
 # Cron: 07:00 UTC daily sync
 [triggers]
 crons = ["0 7 * * *"]
 
 # Limits
-[limits]
-cpu_ms = 30000
+# [limits]
+# cpu_ms = 30000  # Free plan не поддерживает CPU limit
