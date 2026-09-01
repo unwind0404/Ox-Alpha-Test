@@ -9,7 +9,8 @@ import { requireAccess, securityHeaders, AccessError, type AccessEnv } from './a
 import { D1ShopRepository } from './adapters/cloudflare/d1-shop-repository.js'
 import { D1ReviewRepository } from './adapters/cloudflare/d1-review-repository.js'
 import { D1JobRepository } from './adapters/cloudflare/d1-job-repository.js'
-import { D1AuditRepository } from './adapters/cloudflare/d1-audit-repository.js'
+import { D1AuditRepository } from "./adapters/cloudflare/d1-audit-repository.js"
+import { encryptToken, fingerprintToken } from "./adapters/cloudflare/token-crypto.js"
 import { deriveReviewStatus, type DeriveInput } from './core/review-status.js'
 import { tick } from './coordinator/shop-coordinator.js'
 
@@ -59,6 +60,68 @@ async function handleListShops(env: Env): Promise<Response> {
     lastSyncDayUtc: s.lastSyncDayUtc,
   }))
   return jsonResponse({ shops: result })
+}
+
+/** Добавить магазин с зашифрованным WB-токеном. */
+async function handleAddShop(env: Env, request: Request): Promise<Response> {
+  if (request.method !== 'POST') return errorResponse(405, 'POST only')
+  const body = await request.json().catch(() => ({})) as {
+    wbAccountKey?: string
+    name?: string
+    mode?: 'templates' | 'drafts' | 'llm'
+    token?: string
+    enabled?: boolean
+  }
+  const wbAccountKey = (body.wbAccountKey ?? '').trim()
+  const name = (body.name ?? '').trim() || 'My Shop'
+  const mode = body.mode ?? 'drafts'
+  const token = (body.token ?? '').trim()
+  const enabled = body.enabled ?? false
+
+  if (!wbAccountKey) return errorResponse(400, 'wbAccountKey required')
+  if (!token) return errorResponse(400, 'token required')
+  if (!['templates', 'drafts', 'llm'].includes(mode)) return errorResponse(400, 'mode: templates | drafts | llm')
+  if (token.length < 10) return errorResponse(400, 'token too short')
+
+  let enc
+  try {
+    const fp = await fingerprintToken(token, { MASTER_KEY: env.MASTER_KEY, FINGERPRINT_KEY: env.FINGERPRINT_KEY })
+    enc = { ...(await encryptToken(token, { MASTER_KEY: env.MASTER_KEY, FINGERPRINT_KEY: env.FINGERPRINT_KEY })), fingerprint: fp }
+  } catch (e) {
+    return errorResponse(500, 'encrypt: ' + (e as Error).message)
+  }
+
+  const shopId = crypto.randomUUID()
+  const now = Date.now()
+
+  const existing = await env.DB
+    .prepare('SELECT id FROM shops WHERE wb_account_key = ?1')
+    .bind(wbAccountKey)
+    .first<{ id: string }>()
+  if (existing) return errorResponse(409, 'shop with wb_account_key=' + wbAccountKey + ' already exists: ' + existing.id)
+
+  await env.DB
+    .prepare("INSERT INTO shops (id, name, wb_account_key, token_ciphertext, token_iv, token_key_version, token_fingerprint, token_profile, deployment_mode, mode, enabled, last_sync_day_utc, next_sync_at, token_expires_at, disabled_reason, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, 'basic', 'cloud', ?, ?, NULL, ?, NULL, ?, ?, ?)")
+    .bind(
+      shopId, name, wbAccountKey,
+      enc.ciphertext, enc.iv, enc.keyVersion, enc.fingerprint,
+      mode, enabled ? 1 : 0,
+      now,
+      now, now,
+    )
+    .run()
+
+  return jsonResponse({
+    ok: true,
+    shop: {
+      id: shopId,
+      name,
+      wbAccountKey,
+      mode,
+      enabled,
+      tokenFingerprintPrefix: enc.fingerprint.slice(0, 16) + '...',
+    },
+  }, 201)
 }
 
 /** Получить список отзывов для UI (с derived status). */
@@ -224,6 +287,9 @@ export async function fetch(request: Request, env: Env, ctx: ExecutionContext): 
     }
     if (url.pathname === '/api/admin/shops' && request.method === 'GET') {
       return handleListShops(env)
+    }
+    if (url.pathname === '/api/admin/shops' && request.method === 'POST') {
+      return handleAddShop(env, request)
     }
     if (url.pathname === '/api/admin/reviews' && request.method === 'GET') {
       return handleListReviews(env, url)

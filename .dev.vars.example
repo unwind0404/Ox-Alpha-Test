@@ -20,6 +20,12 @@ CRON_SECRET="dev-cron-secret"
 MASTER_KEY="dev-master-key-32-bytes-base64==="
 FINGERPRINT_KEY="dev-fingerprint-key-32-bytes-base64==="
 
+# === Service Token для /api/admin/* (workers.dev НЕ поддерживает Cloudflare Access на Free плане) ===
+# Генерируются случайно. Сейчас установлены в Worker'е через wrangler secret put.
+# Для self-hosted auth на workers.dev используется Cf-Access-Client-Id + Cf-Access-Client-Secret.
+ACCESS_CLIENT_ID="admin-XXXX"
+ACCESS_CLIENT_SECRET="sec-XXXX"
+
 # === Cron ===
 MAX_ANSWERS_PER_RUN="20"
 
