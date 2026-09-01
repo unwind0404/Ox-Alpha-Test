@@ -1,7 +1,7 @@
 # WB Review Bot v3
 
-> Cloudflare Workers runtime. Basic token now, Personal later.
-> Полная переделка по плану [Basic Now, Personal Later](./docs/architecture/basic-now-personal-later.md).
+> Cloudflare Workers Free + Basic токен (5 req/час, 12-минутные слоты).
+> Полная переделка по плану [Basic Now, Personal Later](./docs/architecture/basic-now-personal-later.md). Phase 2 (Personal токен) отложена.
 
 ## Стек
 
@@ -39,7 +39,7 @@ test/           # unit / integration / security
 | self_managed | personal | ✅ |
 | self_managed | service | ❌ |
 
-Phase 1 = `cloud + basic`. Phase 2 = `self_managed + personal`.
+Phase 1 = `cloud + basic` — **это production setup**. Phase 2 (`self_managed + personal`) отложена; см. `server-later/README.md`.
 
 ## Локальная разработка
 
