@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS shops (
   next_sync_at INTEGER NOT NULL,
   token_expires_at INTEGER,
   disabled_reason TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
 );
 
 -- Index для поиска активных магазинов по времени синка

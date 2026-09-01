@@ -48,20 +48,18 @@ function errorResponse(status: number, message: string): Response {
 }
 
 /** Получить список магазинов для UI. */
-async function handleListShops(env: Env): Promise<Response> {
+async function handleListShops(env: Env, url: URL): Promise<Response> {
   const repo = new D1ShopRepository(env.DB)
-  const shops = await repo.listEnabled()
-  const result = shops.map((s) => ({
-    id: s.id,
-    name: s.name,
-    mode: s.mode,
-    enabled: s.enabled,
-    tokenProfile: s.tokenProfile,
-    lastSyncDayUtc: s.lastSyncDayUtc,
-  }))
-  return jsonResponse({ shops: result })
+  const includeDisabled = url.searchParams.get('include_disabled') === 'true'
+  if (!includeDisabled) {
+    const shops = await repo.listEnabled()
+    return jsonResponse({ shops: shops.map((s) => ({ id: s.id, name: s.name, mode: s.mode, enabled: s.enabled, tokenProfile: s.tokenProfile, lastSyncDayUtc: s.lastSyncDayUtc })) })
+  }
+  const all = await env.DB.prepare('SELECT id, name, mode, enabled, token_profile, last_sync_day_utc FROM shops ORDER BY id').all<{ id: string; name: string; mode: 'templates' | 'drafts' | 'llm'; enabled: number; token_profile: 'basic' | 'personal' | 'service'; last_sync_day_utc: string | null }>()
+  return jsonResponse({ shops: all.results.map((s) => ({ id: s.id, name: s.name, mode: s.mode, enabled: s.enabled === 1, tokenProfile: s.token_profile, lastSyncDayUtc: s.last_sync_day_utc })) })
 }
 
+/** Добавить магазин с зашифрованным WB-токеном. */
 /** Добавить магазин с зашифрованным WB-токеном. */
 async function handleAddShop(env: Env, request: Request): Promise<Response> {
   if (request.method !== 'POST') return errorResponse(405, 'POST only')
@@ -100,16 +98,24 @@ async function handleAddShop(env: Env, request: Request): Promise<Response> {
     .first<{ id: string }>()
   if (existing) return errorResponse(409, 'shop with wb_account_key=' + wbAccountKey + ' already exists: ' + existing.id)
 
-  await env.DB
-    .prepare("INSERT INTO shops (id, name, wb_account_key, token_ciphertext, token_iv, token_key_version, token_fingerprint, token_profile, deployment_mode, mode, enabled, last_sync_day_utc, next_sync_at, token_expires_at, disabled_reason, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, 'basic', 'cloud', ?, ?, NULL, ?, NULL, ?, ?, ?)")
-    .bind(
-      shopId, name, wbAccountKey,
-      enc.ciphertext, enc.iv, enc.keyVersion, enc.fingerprint,
-      mode, enabled ? 1 : 0,
-      now,
-      now, now,
-    )
-    .run()
+  try {
+    await env.DB
+      .prepare("INSERT INTO shops (id, name, wb_account_key, token_ciphertext, token_iv, token_key_version, token_fingerprint, token_profile, deployment_mode, mode, enabled, last_sync_day_utc, next_sync_at, token_expires_at, disabled_reason, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, 'basic', 'cloud', ?, ?, NULL, ?, NULL, ?, ?, ?)")
+      .bind(
+        shopId, name, wbAccountKey,
+        enc.ciphertext, enc.iv, enc.keyVersion, enc.fingerprint,
+        mode, enabled ? 1 : 0,
+
+        now,                   // next_sync_at
+        'added via API',      // disabled_reason
+        now,                   // created_at_ms
+        now,                   // updated_at_ms
+      )
+      .run()
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return errorResponse(500, 'd1: ' + msg)
+  }
 
   return jsonResponse({
     ok: true,
@@ -123,6 +129,7 @@ async function handleAddShop(env: Env, request: Request): Promise<Response> {
     },
   }, 201)
 }
+
 
 /** Получить список отзывов для UI (с derived status). */
 async function handleListReviews(env: Env, url: URL): Promise<Response> {
@@ -286,7 +293,7 @@ export async function fetch(request: Request, env: Env, ctx: ExecutionContext): 
       return jsonResponse({ ok: true, identity, deployment: env.DEPLOYMENT_MODE })
     }
     if (url.pathname === '/api/admin/shops' && request.method === 'GET') {
-      return handleListShops(env)
+      return handleListShops(env, url)
     }
     if (url.pathname === '/api/admin/shops' && request.method === 'POST') {
       return handleAddShop(env, request)
